@@ -2,13 +2,13 @@
  * 【最終完成版 v11・改 v2】
  * 指定した1年分のデータを追記し、シート全体を日付順に並べ替えます。
  */
-function main() {
+ function main() {
 
   // ▼▼【要設定】▼▼ 取得したい年を西暦で指定してください
   const TARGET_YEAR = 2025; // 年数を指定してください
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
-  const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
+  const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
 
   // ▼設定▼ 記録先のシート名を指定してください
   const SHEET_NAME = 'Google広告データ';

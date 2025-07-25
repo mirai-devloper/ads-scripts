@@ -1,11 +1,12 @@
 /**
  * 【コンバージョン内訳レポート用・日次更新版】
  * 毎日、未取得の日別のコンバージョン内訳を追記します。
+ * 「広告チャネルタイプ」列を追加。
  */
-function main() {
+ function main() {
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
-  const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
+  const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
 
   // ▼設定▼ 記録先のシート名を指定してください
   const SHEET_NAME = 'コンバージョン内訳データ'; // シート名は変更OK
@@ -15,8 +16,8 @@ function main() {
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) { sheet = spreadsheet.insertSheet(SHEET_NAME); }
 
-  // --- ヘッダー行の準備 ---
-  const japaneseHeaders = ['日付', 'デバイス', 'キャンペーン名', 'コンバージョンアクション名', 'コンバージョン数'];
+  // ★★★【変更点】ヘッダーに「広告チャネルタイプ」を追加 ★★★
+  const japaneseHeaders = ['日付', 'デバイス', 'キャンペーン名', 'コンバージョンアクション名', 'コンバージョン数', '広告チャネルタイプ'];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(japaneseHeaders);
   }
@@ -33,7 +34,6 @@ function main() {
   let startDateString;
 
   // シートの最終行から開始日を決定する
-  // データが1行もなければ（ヘッダーのみ）、開始日も昨日とする
   if (sheet.getLastRow() <= 1) {
     console.log('データがないため、昨日1日分のデータを取得します。');
     startDateString = endDateString;
@@ -51,14 +51,15 @@ function main() {
     startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
   }
 
-  // --- GAQLクエリを作成 ---
+  // ★★★【変更点】クエリに「campaign.advertising_channel_type」を追加 ★★★
   const query = `
     SELECT
       segments.date,
       segments.device,
       campaign.name,
       segments.conversion_action_name,
-      metrics.conversions
+      metrics.conversions,
+      campaign.advertising_channel_type
     FROM campaign
     WHERE
       segments.date >= '${startDateString}'
@@ -77,12 +78,14 @@ function main() {
 
     while (rows.hasNext()) {
       const row = rows.next();
+      // ★★★【変更点】書き込むデータにチャネルタイプを追加 ★★★
       dataToWrite.push([
         row['segments.date'],
         row['segments.device'],
         row['campaign.name'],
         row['segments.conversion_action_name'],
-        row['metrics.conversions']
+        row['metrics.conversions'],
+        row['campaign.advertising_channel_type']
       ]);
     }
 
