@@ -12,7 +12,7 @@
   const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'コンバージョン内訳データ';
+  const SHEET_NAME = 'コンバージョンデータ';
 
   // --- スプレッドシートの準備 ---
   const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);

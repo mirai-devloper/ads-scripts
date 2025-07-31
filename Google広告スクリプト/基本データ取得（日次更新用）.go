@@ -1,7 +1,7 @@
 /**
- * 【最終完成版 v11・日次更新版】
+ * 【最終完成版・金額修正済み】
  * 毎日、未取得のデータを自動で補完します。
- * デバイス名・チャネル名の表記を統一し、金額の単位を修正。
+ * 金額はAPIから取得した円単位の値をそのまま利用します。
  */
  function main() {
 
@@ -9,7 +9,7 @@
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'Google広告データ'; // シート名は変更OK
+  const SHEET_NAME = '基本データ'; // シート名は変更OK
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -92,27 +92,22 @@
       const row = rows.next();
       const newRow = [];
 
-      // ★★★【変更点】データを1つずつ処理し、表記と単位を統一 ★★★
       for (let i = 0; i < apiFields.length; i++) {
         const fieldName = apiFields[i];
         let value = row[fieldName];
 
-        // デバイス名の表記を統一
+        if (typeof value === 'number' && !isFinite(value)) {
+          value = 0;
+        }
+
+        // --- 表記統一（デバイス名・チャネル名） ---
         if (fieldName === 'Device') {
           if (value === 'Mobile devices with full browsers') value = 'MOBILE';
           if (value === 'Computers') value = 'DESKTOP';
           if (value === 'Tablets with full browsers') value = 'TABLET';
         }
-
-        // チャネル名を大文字に統一
         if (fieldName === 'AdvertisingChannelType') {
           if (value) value = value.toUpperCase();
-        }
-
-        // 金額関連の指標を「円」単位に変換
-        const moneyFields = ['Cost', 'AverageCpc', 'CostPerConversion', 'CostPerAllConversion', 'AverageCost', 'AverageCpm', 'AverageCpv'];
-        if (moneyFields.indexOf(fieldName) !== -1) {
-          value = value / 1000000;
         }
 
         newRow.push(value);

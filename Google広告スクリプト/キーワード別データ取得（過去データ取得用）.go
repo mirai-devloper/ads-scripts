@@ -82,12 +82,6 @@
           if (value) value = value.toUpperCase();
         }
 
-        // 金額関連の指標を「円」単位に変換
-        const moneyFields = ['Cost', 'ConversionValue'];
-        if (moneyFields.indexOf(fieldName) !== -1) {
-          value = value / 1000000;
-        }
-
         newRow.push(value);
       }
       dataToWrite.push(newRow);

@@ -12,7 +12,7 @@
   const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'Google広告データ';
+  const SHEET_NAME = '基本データ';
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -73,12 +73,6 @@
         // チャネル名を大文字に統一
         if (fieldName === 'AdvertisingChannelType') {
           if (value) value = value.toUpperCase();
-        }
-
-        // 金額関連の指標を「円」単位に変換
-        const moneyFields = ['Cost', 'AverageCpc', 'CostPerConversion', 'CostPerAllConversion', 'AverageCost', 'AverageCpm', 'AverageCpv'];
-        if (moneyFields.indexOf(fieldName) !== -1) {
-          value = value / 1000000;
         }
 
         newRow.push(value);
