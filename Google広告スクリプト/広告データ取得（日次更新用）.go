@@ -1,8 +1,9 @@
 /**
  * 【最終完成版 v11・日次更新版】
  * 毎日、未取得のデータを自動で補完します。
+ * デバイス名・チャネル名の表記を統一し、金額の単位を修正。
  */
-function main() {
+ function main() {
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
@@ -50,24 +51,21 @@ function main() {
     const accountTimezone = AdsApp.currentAccount().getTimeZone();
     let reportPeriod = '';
 
-    // 終了日は常に昨日
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
     const endDateString = Utilities.formatDate(yesterday, accountTimezone, "yyyyMMdd");
 
-    // シートの最終行から開始日を決定する
     if (sheet.getLastRow() <= 1) {
       console.log('データがないため、昨日1日分のデータを取得します。');
-      const startDateString = endDateString; // データがなければ開始日も昨日
+      const startDateString = endDateString;
       reportPeriod = startDateString + ',' + endDateString;
     } else {
       console.log('通常実行（デイリー更新）を開始します。');
       const lastDate = new Date(sheet.getRange(sheet.getLastRow(), 1).getValue());
       const startDate = new Date(lastDate);
-      startDate.setDate(lastDate.getDate() + 1); // 開始日は記録されている最終日の「翌日」
+      startDate.setDate(lastDate.getDate() + 1);
 
-      // 既にデータが最新の場合は処理を終了
       if (startDate > yesterday) {
         console.log('データは既に最新です。処理を終了します。');
         return;
@@ -93,8 +91,31 @@ function main() {
     while (rows.hasNext()) {
       const row = rows.next();
       const newRow = [];
+
+      // ★★★【変更点】データを1つずつ処理し、表記と単位を統一 ★★★
       for (let i = 0; i < apiFields.length; i++) {
-        newRow.push(row[apiFields[i]]);
+        const fieldName = apiFields[i];
+        let value = row[fieldName];
+
+        // デバイス名の表記を統一
+        if (fieldName === 'Device') {
+          if (value === 'Mobile devices with full browsers') value = 'MOBILE';
+          if (value === 'Computers') value = 'DESKTOP';
+          if (value === 'Tablets with full browsers') value = 'TABLET';
+        }
+
+        // チャネル名を大文字に統一
+        if (fieldName === 'AdvertisingChannelType') {
+          if (value) value = value.toUpperCase();
+        }
+
+        // 金額関連の指標を「円」単位に変換
+        const moneyFields = ['Cost', 'AverageCpc', 'CostPerConversion', 'CostPerAllConversion', 'AverageCost', 'AverageCpm', 'AverageCpv'];
+        if (moneyFields.indexOf(fieldName) !== -1) {
+          value = value / 1000000;
+        }
+
+        newRow.push(value);
       }
       dataToWrite.push(newRow);
     }

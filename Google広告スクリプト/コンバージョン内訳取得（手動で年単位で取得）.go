@@ -1,7 +1,7 @@
 /**
  * 【年指定・追記・自動ソート版】
  * 指定した1年分のデータを追記し、シート全体を日付順に並べ替えます。
- * 「広告チャネルタイプ」列を追加。
+ * 「広告チャネルタイプ」列を追加し、デバイス名・チャネル名の表記を統一。
  */
  function main() {
 
@@ -21,7 +21,6 @@
     sheet = spreadsheet.insertSheet(SHEET_NAME);
   }
 
-  // ★★★【変更点】ヘッダーに「広告チャネルタイプ」を追加 ★★★
   const japaneseHeaders = ['日付', 'デバイス', 'キャンペーン名', 'コンバージョンアクション名', 'コンバージョン数', '広告チャネルタイプ'];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(japaneseHeaders);
@@ -35,7 +34,6 @@
   const endDateString = Utilities.formatDate(endDate, accountTimezone, "yyyyMMdd");
   console.log(`取得期間: ${TARGET_YEAR}年1月1日 から ${TARGET_YEAR}年12月31日`);
 
-  // ★★★【変更点】クエリに「campaign.advertising_channel_type」を追加 ★★★
   const query = `
     SELECT
       segments.date, segments.device, campaign.name,
@@ -53,14 +51,22 @@
 
     while (rows.hasNext()) {
       const row = rows.next();
-      // ★★★【変更点】書き込むデータにチャネルタイプを追加 ★★★
+
+      // ★★★【変更点】デバイス名とチャネル名の表記を統一する ★★★
+      let device = row['segments.device'];
+      if (device === 'Mobile devices with full browsers') device = 'MOBILE';
+      if (device === 'Computers') device = 'DESKTOP';
+      if (device === 'Tablets with full browsers') device = 'TABLET';
+
+      const channel = row['campaign.advertising_channel_type'].toUpperCase();
+
       dataToWrite.push([
         row['segments.date'],
-        row['segments.device'],
+        device, // 統一したデバイス名
         row['campaign.name'],
         row['segments.conversion_action_name'],
         row['metrics.conversions'],
-        row['campaign.advertising_channel_type']
+        channel // 統一したチャネル名
       ]);
     }
 

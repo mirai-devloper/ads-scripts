@@ -1,7 +1,7 @@
 /**
  * 【コンバージョン内訳レポート用・日次更新版】
  * 毎日、未取得の日別のコンバージョン内訳を追記します。
- * 「広告チャネルタイプ」列を追加。
+ * 「広告チャネルタイプ」列を追加し、デバイス名・チャネル名の表記を統一。
  */
  function main() {
 
@@ -16,7 +16,6 @@
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) { sheet = spreadsheet.insertSheet(SHEET_NAME); }
 
-  // ★★★【変更点】ヘッダーに「広告チャネルタイプ」を追加 ★★★
   const japaneseHeaders = ['日付', 'デバイス', 'キャンペーン名', 'コンバージョンアクション名', 'コンバージョン数', '広告チャネルタイプ'];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(japaneseHeaders);
@@ -25,7 +24,6 @@
   // --- 取得期間を決定するロジック ---
   const accountTimezone = AdsApp.currentAccount().getTimeZone();
 
-  // 終了日は常に昨日
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
@@ -33,7 +31,6 @@
 
   let startDateString;
 
-  // シートの最終行から開始日を決定する
   if (sheet.getLastRow() <= 1) {
     console.log('データがないため、昨日1日分のデータを取得します。');
     startDateString = endDateString;
@@ -41,9 +38,8 @@
     console.log('通常実行：未取得の期間のデータを取得します。');
     const lastDate = new Date(sheet.getRange(sheet.getLastRow(), 1).getValue());
     const startDate = new Date(lastDate);
-    startDate.setDate(lastDate.getDate() + 1); // 開始日は記録されている最終日の「翌日」
+    startDate.setDate(lastDate.getDate() + 1);
 
-    // 既にデータが最新の場合は処理を終了
     if (startDate > yesterday) {
       console.log('データは既に最新です。');
       return;
@@ -51,7 +47,6 @@
     startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
   }
 
-  // ★★★【変更点】クエリに「campaign.advertising_channel_type」を追加 ★★★
   const query = `
     SELECT
       segments.date,
@@ -78,14 +73,22 @@
 
     while (rows.hasNext()) {
       const row = rows.next();
-      // ★★★【変更点】書き込むデータにチャネルタイプを追加 ★★★
+
+      // ★★★【変更点】デバイス名とチャネル名の表記を統一する ★★★
+      let device = row['segments.device'];
+      if (device === 'Mobile devices with full browsers') device = 'MOBILE';
+      if (device === 'Computers') device = 'DESKTOP';
+      if (device === 'Tablets with full browsers') device = 'TABLET';
+
+      const channel = row['campaign.advertising_channel_type'].toUpperCase();
+
       dataToWrite.push([
         row['segments.date'],
-        row['segments.device'],
+        device, // 統一したデバイス名
         row['campaign.name'],
         row['segments.conversion_action_name'],
         row['metrics.conversions'],
-        row['campaign.advertising_channel_type']
+        channel // 統一したチャネル名
       ]);
     }
 

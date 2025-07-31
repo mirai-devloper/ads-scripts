@@ -1,7 +1,7 @@
 /**
- * 【年指定・追記・自動ソート版】
- * 指定した1年分のデータを追記し、シート全体を日付順に並べ替えます。
- * デバイス名・チャネル名の表記を統一し、金額の単位を修正。
+ * 【キーワード別レポート版】
+ * 指定した1年分のキーワード別データを追記し、シート全体を日付順に並べ替えます。
+ * デバイス名の表記を統一し、金額の単位を修正。
  */
  function main() {
 
@@ -12,7 +12,7 @@
   const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'Google広告データ';
+  const SHEET_NAME = 'キーワード別データ';
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -27,10 +27,12 @@
 
   try {
     const apiFields = [
-      'Date', 'Device', 'AccountDescriptiveName', 'CampaignId', 'CampaignName', 'CampaignStatus', 'AdvertisingChannelType', 'BiddingStrategyType', 'Impressions', 'Clicks', 'Cost', 'Ctr', 'AverageCpc', 'Conversions', 'ConversionRate', 'CostPerConversion', 'AllConversions', 'AllConversionRate', 'CostPerAllConversion', 'ViewThroughConversions', 'Interactions', 'InteractionRate', 'AverageCost', 'AverageCpm', 'AverageCpv', 'SearchImpressionShare', 'SearchTopImpressionShare', 'SearchAbsoluteTopImpressionShare', 'SearchBudgetLostImpressionShare', 'SearchRankLostImpressionShare', 'ContentImpressionShare', 'ContentBudgetLostImpressionShare', 'ContentRankLostImpressionShare', 'VideoViews', 'VideoViewRate', 'VideoQuartile25Rate', 'VideoQuartile50Rate', 'VideoQuartile75Rate', 'VideoQuartile100Rate'
+      'Date', 'Device', 'CampaignName', 'AdGroupName', 'Criteria', 'KeywordMatchType',
+      'Impressions', 'Clicks', 'Cost', 'Conversions', 'ConversionValue'
     ];
     const japaneseHeaders = [
-      '日付', 'デバイス', 'アカウント名', 'キャンペーンID', 'キャンペーン名', 'キャンペーンステータス', '広告チャネルタイプ', '入札戦略タイプ', '表示回数', 'クリック数', 'ご利用額', 'クリック率', '平均クリック単価', 'コンバージョン', 'コンバージョン率', 'コンバージョン単価', 'すべてのコンバージョン', 'すべてのコンバージョン率', 'すべてのコンバージョン単価', 'ビュースルーコンバージョン', 'インタラクション', 'インタラクション率', '平均費用', '平均CPM', '平均CPV', '検索IS', '検索TOP IS', '検索Abs.TOP IS', '検索IS損失率(予算)', '検索IS損失率(ランク)', 'コンテンツIS', 'コンテンツIS損失率(予算)', 'コンテンツIS損失率(ランク)', '動画再生回数', '動画再生率', '動画再生25%', '動画再生50%', '動画再生75%', '動画再生100%'
+      '日付', 'デバイス', 'キャンペーン名', '広告グループ名', 'キーワード', 'マッチタイプ',
+      '表示回数', 'クリック数', 'ご利用額', 'コンバージョン数', 'コンバージョン価値'
     ];
 
     if (sheet.getLastRow() === 0) {
@@ -49,7 +51,12 @@
     console.log('取得期間: ' + reportPeriod);
 
     // --- レポートを取得 ---
-    const query = 'SELECT ' + apiFields.join(', ') + ' FROM CAMPAIGN_PERFORMANCE_REPORT DURING ' + reportPeriod + ' ORDER BY Date ASC';
+    const query =
+      'SELECT ' + apiFields.join(', ') + ' ' +
+      'FROM KEYWORDS_PERFORMANCE_REPORT ' +
+      'DURING ' + reportPeriod + ' ' +
+      'ORDER BY Date ASC';
+
     const report = AdsApp.report(query);
     const rows = report.rows();
 
@@ -70,13 +77,13 @@
           if (value === 'Tablets with full browsers') value = 'TABLET';
         }
 
-        // チャネル名を大文字に統一
-        if (fieldName === 'AdvertisingChannelType') {
+        // マッチタイプを大文字に統一
+        if (fieldName === 'KeywordMatchType') {
           if (value) value = value.toUpperCase();
         }
 
         // 金額関連の指標を「円」単位に変換
-        const moneyFields = ['Cost', 'AverageCpc', 'CostPerConversion', 'CostPerAllConversion', 'AverageCost', 'AverageCpm', 'AverageCpv'];
+        const moneyFields = ['Cost', 'ConversionValue'];
         if (moneyFields.indexOf(fieldName) !== -1) {
           value = value / 1000000;
         }
@@ -87,11 +94,9 @@
     }
 
     if (dataToWrite.length > 0) {
-      // データをシートの末尾に一括で追記
       sheet.getRange(sheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
       console.log(dataToWrite.length + '件のデータを追記しました。');
 
-      // シート全体を日付で並べ替え
       if (sheet.getLastRow() > 1) {
         const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
         dataRange.sort({column: 1, ascending: true});

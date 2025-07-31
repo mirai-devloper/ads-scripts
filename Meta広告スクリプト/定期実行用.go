@@ -1,32 +1,16 @@
-// ================================================================
-// ▼▼▼ お客様が設定する箇所 ▼▼▼
-// ================================================================
-
-// 1. Meta広告のアクセストークン
-const ACCESS_TOKEN = '（アクセストークン）';
-
-// 2. Meta広告のアカウントID（"act_"から始まるもの）
-const AD_ACCOUNT_ID = 'act_（アカウントID）';
-
-// 3. データを書き込むシート名
-const SHEET_NAME = 'Meta広告レポート';
-
-// ================================================================
-// ▲▲▲ 設定はここまで ▲▲▲
-// ================================================================
-
-
 /**
  * 日次トリガーで実行するメイン関数
  */
-function runDailyUpdate() {
+ function runDailyUpdate() {
+  // 設定ファイル(Config.gs)から設定値を参照します
+  const sheetName = DAILY_REPORT_SHEET_NAME;
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+  const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
 
   try {
     const { startDate, endDate } = getTargetDateRange(sheet);
 
-    // 取得対象期間がなければ（＝昨日分まで取得済みなら）処理を終了
     if (!startDate) {
       Logger.log('データは最新の状態です。処理を終了します。');
       return;
@@ -34,21 +18,17 @@ function runDailyUpdate() {
 
     Logger.log(`データ取得期間: ${startDate} 〜 ${endDate}`);
 
-    // APIからレポートデータを取得
-    const reportData = getInsights(startDate, endDate);
+    const reportData = getDailyInsights(startDate, endDate);
     if (!reportData || reportData.length === 0) {
       Logger.log('期間内に取得できるデータがありませんでした。');
       return;
     }
 
-    // スプレッドシートに追記
     appendToSheet(sheet, reportData);
     Logger.log(`レポートの書き込みが完了しました。合計 ${reportData.length} 件のデータを追記しました。`);
 
   } catch (e) {
     Logger.log('エラーが発生しました: ' + e.toString());
-    // エラー発生時にメールで通知したい場合は以下のコメントを外す
-    // MailApp.sendEmail(Session.getEffectiveUser().getEmail(), '[エラー] Meta広告レポート取得', e.toString());
   }
 }
 
@@ -63,20 +43,16 @@ function getTargetDateRange(sheet) {
   yesterday.setDate(yesterday.getDate() - 1);
   const endDate = formatDate(yesterday);
 
-  // シートが空かヘッダーのみの場合、昨日1日分を取得
   if (lastRow < 2) {
     return { startDate: endDate, endDate: endDate };
   }
 
-  // A列の最終行から最後の日付を取得
   const lastRecordedDateStr = sheet.getRange(lastRow, 1).getValue();
   const lastRecordedDate = new Date(lastRecordedDateStr);
 
-  // 取得開始日を計算（最終記録日の翌日）
   const startDate = new Date(lastRecordedDate.getTime());
   startDate.setDate(startDate.getDate() + 1);
 
-  // 最終記録日が昨日以降の場合、取得対象はない
   if (startDate > yesterday) {
     return { startDate: null, endDate: null };
   }
@@ -90,8 +66,9 @@ function getTargetDateRange(sheet) {
  * @param {string} endDate - 取得終了日 (YYYY-MM-DD)
  * @returns {Array} - 取得したデータ配列
  */
-function getInsights(startDate, endDate) {
-  const apiVersion = 'v20.0';
+function getDailyInsights(startDate, endDate) {
+  // 【修正】APIバージョンを最新版(v23.0)に更新
+  const apiVersion = 'v23.0';
   let url = `https://graph.facebook.com/${apiVersion}/${AD_ACCOUNT_ID}/insights`;
 
   const fields = [
@@ -133,10 +110,7 @@ function getInsights(startDate, endDate) {
  * @param {Array} data - 書き込むデータ
  */
 function appendToSheet(sheet, data) {
-  const lastRow = sheet.getLastRow();
-
-  // ヘッダーがなければ書き込む
-  if (lastRow < 1) {
+  if (sheet.getLastRow() < 1) {
     const headers = [
       '日付', 'キャンペーン名', '広告セット名', '広告名', '配信プラットフォーム', 'デバイス',
       '消化金額', 'インプレッション数', 'リーチ数', 'フリークエンシー', 'クリック数', 'CTR(%)', 'CPC', 'CPM',
@@ -170,20 +144,17 @@ function appendToSheet(sheet, data) {
   }
 }
 
-// --- 以下は補助的な関数（変更なし） ---
-
+// --- 以下は補助的な関数 ---
 function parseAction(item, actionType) {
   if (!item.actions) return 0;
   const action = item.actions.find(a => a.action_type === actionType);
   return action ? Number(action.value) : 0;
 }
-
 function parseActionValue(item, actionType) {
   if (!item.action_values) return 0;
   const action = item.action_values.find(a => a.action_type === actionType);
   return action ? Number(action.value) : 0;
 }
-
 function formatDate(date) {
   const y = date.getFullYear();
   const m = ('0' + (date.getMonth() + 1)).slice(-2);
