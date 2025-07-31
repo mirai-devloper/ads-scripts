@@ -5,7 +5,7 @@
  function main() {
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
-  const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
+  const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
   const SHEET_NAME = 'キーワード別データ';
@@ -88,6 +88,8 @@
           if (value === 'Mobile devices with full browsers') value = 'MOBILE';
           if (value === 'Computers') value = 'DESKTOP';
           if (value === 'Tablets with full browsers') value = 'TABLET';
+          if (value === 'Other') value = 'OTHER';
+          if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
 
         // マッチタイプを大文字に統一

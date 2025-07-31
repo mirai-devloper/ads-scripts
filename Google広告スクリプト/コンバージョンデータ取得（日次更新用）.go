@@ -6,7 +6,7 @@
  function main() {
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
-  const SPREADSHEET_URL = '（スプレッドシートのURLを入力）';
+  const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
   const SHEET_NAME = 'コンバージョンデータ'; // シート名は変更OK
@@ -79,6 +79,8 @@
       if (device === 'Mobile devices with full browsers') device = 'MOBILE';
       if (device === 'Computers') device = 'DESKTOP';
       if (device === 'Tablets with full browsers') device = 'TABLET';
+      if (device === 'Other') device = 'OTHER';
+      if (device === 'Devices streaming video content to TV screens') device = 'STREAMING_TV';
 
       const channel = row['campaign.advertising_channel_type'].toUpperCase();
 

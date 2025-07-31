@@ -105,6 +105,8 @@
           if (value === 'Mobile devices with full browsers') value = 'MOBILE';
           if (value === 'Computers') value = 'DESKTOP';
           if (value === 'Tablets with full browsers') value = 'TABLET';
+          if (value === 'Other') value = 'OTHER';
+          if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
         if (fieldName === 'AdvertisingChannelType') {
           if (value) value = value.toUpperCase();
