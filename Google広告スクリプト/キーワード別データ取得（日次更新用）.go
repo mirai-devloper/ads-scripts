@@ -94,7 +94,9 @@
 
         // マッチタイプを大文字に統一
         if (fieldName === 'KeywordMatchType') {
-          if (value) value = value.toUpperCase();
+          if (value === 'Broad') value = '部分一致';
+          else if (value === 'Exact') value = '完全一致';
+          else if (value === 'Phrase') value = 'フレーズ一致';
         }
 
         newRow.push(value);

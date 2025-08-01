@@ -1,7 +1,7 @@
 /**
  * 【キーワード別レポート版】
  * 指定した1年分のキーワード別データを追記し、シート全体を日付順に並べ替えます。
- * デバイス名の表記を統一し、金額の単位を修正。
+ * マッチタイプを日本語に変換。
  */
  function main() {
 
@@ -65,7 +65,6 @@
       const row = rows.next();
       const newRow = [];
 
-      // ★★★【変更点】データを1つずつ処理し、表記と単位を統一 ★★★
       for (let i = 0; i < apiFields.length; i++) {
         const fieldName = apiFields[i];
         let value = row[fieldName];
@@ -79,9 +78,11 @@
           if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
 
-        // マッチタイプを大文字に統一
+        // ★★★【変更点】マッチタイプを日本語に変換 ★★★
         if (fieldName === 'KeywordMatchType') {
-          if (value) value = value.toUpperCase();
+          if (value === 'Broad') value = '部分一致';
+          else if (value === 'Exact') value = '完全一致';
+          else if (value === 'Phrase') value = 'フレーズ一致';
         }
 
         newRow.push(value);
