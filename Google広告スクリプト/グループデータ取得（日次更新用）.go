@@ -1,18 +1,14 @@
 /**
- * 【キーワード別レポート版】
- * 指定した1年分のキーワード別データを追記し、シート全体を日付順に並べ替えます。
- * マッチタイプを日本語に変換。
+ * 【広告グループ版・日次更新専用】
+ * 常に、シートの最終行の翌日から昨日までの未取得データを追記します。
  */
  function main() {
-
-  // ▼▼【要設定】▼▼ 取得したい年を西暦で指定してください
-  const TARGET_YEAR = 2025; // 年数を指定してください
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'キーワードデータ';
+  const SHEET_NAME = 'グループデータ';
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -27,12 +23,14 @@
 
   try {
     const apiFields = [
-      'Date', 'Device', 'CampaignName', 'AdGroupName', 'Criteria', 'KeywordMatchType',
-      'Impressions', 'Clicks', 'Cost', 'Conversions', 'ConversionValue'
+      'Date', 'CampaignId', 'CampaignName', 'AdGroupId', 'AdGroupName',
+      'AdGroupStatus', 'AdGroupType', 'Device', 'Conversions',
+      'Impressions', 'Clicks', 'Cost'
     ];
     const japaneseHeaders = [
-      '日付', 'デバイス', 'キャンペーン名', '広告グループ名', 'キーワード', 'マッチタイプ',
-      '表示回数', 'クリック数', 'ご利用額', 'コンバージョン数', 'コンバージョン価値'
+      '日付', 'キャンペーンID', 'キャンペーン名', '広告グループID', '広告グループ名',
+      '広告グループステータス', '広告グループタイプ', 'デバイス', 'コンバージョン',
+      '表示回数', 'クリック数', '費用'
     ];
 
     if (sheet.getLastRow() === 0) {
@@ -40,21 +38,40 @@
       console.log('ヘッダー行を新規設定しました。');
     }
 
-    // --- 取得期間を決定するロジック ---
+    // ★★★【変更点】日次更新専用のシンプルな期間設定ロジック ★★★
     const accountTimezone = AdsApp.currentAccount().getTimeZone();
-    const startDate = new Date(TARGET_YEAR, 0, 1);
-    const endDate = new Date(TARGET_YEAR, 11, 31);
-    const startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
-    const endDateString = Utilities.formatDate(endDate, accountTimezone, "yyyyMMdd");
-    const reportPeriod = startDateString + ',' + endDateString;
+    let startDateString, endDateString;
 
-    console.log('取得期間: ' + reportPeriod);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    endDateString = Utilities.formatDate(yesterday, accountTimezone, "yyyyMMdd");
+
+    // シートにヘッダー行しかない場合、開始日も昨日とする
+    if (sheet.getLastRow() <= 1) {
+      console.log('データがないため、昨日1日分のデータを取得します。');
+      startDateString = endDateString;
+    } else { // データがある場合は、最終日の翌日から取得
+      console.log('通常実行：未取得の期間のデータを取得します。');
+      const lastDate = new Date(sheet.getRange(sheet.getLastRow(), 1).getValue());
+      const startDate = new Date(lastDate);
+      startDate.setDate(lastDate.getDate() + 1);
+
+      // 既にデータが最新の場合は処理を終了
+      if (startDate > yesterday) {
+        console.log('データは既に最新です。');
+        return;
+      }
+      startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
+    }
+
+    console.log('取得期間: ' + startDateString + ' - ' + endDateString);
 
     // --- レポートを取得 ---
     const query =
       'SELECT ' + apiFields.join(', ') + ' ' +
-      'FROM KEYWORDS_PERFORMANCE_REPORT ' +
-      'DURING ' + reportPeriod + ' ' +
+      'FROM ADGROUP_PERFORMANCE_REPORT ' +
+      'DURING ' + startDateString + ',' + endDateString + ' ' +
       'ORDER BY Date ASC';
 
     const report = AdsApp.report(query);
@@ -78,11 +95,11 @@
           if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
 
-        // ★★★【変更点】マッチタイプを日本語に変換 ★★★
-        if (fieldName === 'KeywordMatchType') {
-          if (value === 'Broad') value = '部分一致';
-          else if (value === 'Exact') value = '完全一致';
-          else if (value === 'Phrase') value = 'フレーズ一致';
+        // 費用のカンマ区切りを数値に変換（単位変換はしない）
+        if (fieldName === 'Cost') {
+            if (typeof value === 'string' && value.includes(',')) {
+               value = parseFloat(value.replace(/,/g, ''));
+            }
         }
 
         newRow.push(value);
@@ -93,17 +110,12 @@
     if (dataToWrite.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
       console.log(dataToWrite.length + '件のデータを追記しました。');
-
-      if (sheet.getLastRow() > 1) {
-        const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
-        dataRange.sort({column: 1, ascending: true});
-        console.log('シート全体を日付順に並べ替えました。');
-      }
     } else {
       console.log('期間内に記録対象のデータはありませんでした。');
     }
 
   } catch (e) {
     console.error('スクリプトの実行中にエラーが発生しました: ' + e.toString());
+    console.error('エラー詳細: ' + e.stack);
   }
 }

@@ -2,13 +2,12 @@
  * 【キーワード別レポート・日次更新専用版】
  * 毎日、未取得の期間のデータを自動で追記する。
  */
- function main() {
-
+function main() {
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'キーワード別データ';
+  const SHEET_NAME = 'キーワードデータ';
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -33,7 +32,7 @@
 
     if (sheet.getLastRow() === 0) {
       sheet.appendRow(japaneseHeaders);
-      console.log('ヘッダー行を新規設定しました。');
+      console.log('ヘダー行を新規設定しました。');
     }
 
     // ★★★【変更点】日次更新専用のシンプルな期間設定ロジック ★★★
@@ -79,7 +78,8 @@
       const row = rows.next();
       const newRow = [];
 
-      for (let i = 0; i < apiFields.length; i) {
+      // ★★★【変更点】無限ループのエラー箇所のみを修正 ★★★
+      for (let i = 0; i < apiFields.length; i++) { // ← i++ を追加
         const fieldName = apiFields[i];
         let value = row[fieldName];
 
@@ -92,7 +92,7 @@
           if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
 
-        // マッチタイプを大文字に統一
+        // マッチタイプを日本語に統一
         if (fieldName === 'KeywordMatchType') {
           if (value === 'Broad') value = '部分一致';
           else if (value === 'Exact') value = '完全一致';

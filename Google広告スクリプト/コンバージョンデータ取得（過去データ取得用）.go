@@ -1,7 +1,6 @@
 /**
  * 【年指定・追記・自動ソート版】
- * 指定した1年分のデータを追記し、シート全体を日付順に並べ替えます。
- * 「広告チャネルタイプ」列を追加し、デバイス名・チャネル名の表記を統一。
+ * 指定した1年分のコンバージョン内訳データを広告グループ単位で取得します。
  */
  function main() {
 
@@ -12,7 +11,7 @@
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = 'コンバージョンデータ';
+  const SHEET_NAME = 'CV内訳データ';
 
   // --- スプレッドシートの準備 ---
   const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
@@ -21,7 +20,11 @@
     sheet = spreadsheet.insertSheet(SHEET_NAME);
   }
 
-  const japaneseHeaders = ['日付', 'デバイス', 'キャンペーン名', 'コンバージョンアクション名', 'コンバージョン数', '広告チャネルタイプ'];
+  // ★★★【変更点】ご要望の項目リストに合わせてヘッダーを修正 ★★★
+  const japaneseHeaders = [
+    '日付', 'デバイス', 'キャンペーン名', 'キャンペーンID', '広告グループ名', '広告グループID',
+    '広告グループステータス', '広告グループタイプ', 'コンバージョンアクション名', 'コンバージョン数', '広告チャネルタイプ'
+  ];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(japaneseHeaders);
   }
@@ -34,13 +37,23 @@
   const endDateString = Utilities.formatDate(endDate, accountTimezone, "yyyyMMdd");
   console.log(`取得期間: ${TARGET_YEAR}年1月1日 から ${TARGET_YEAR}年12月31日`);
 
+  // ★★★【変更点】ご要望の項目リストに合わせてクエリを修正 ★★★
   const query = `
     SELECT
-      segments.date, segments.device, campaign.name,
-      segments.conversion_action_name, metrics.conversions,
+      segments.date,
+      segments.device,
+      campaign.name,
+      campaign.id,
+      ad_group.name,
+      ad_group.id,
+      ad_group.status,
+      ad_group.type,
+      segments.conversion_action_name,
+      metrics.conversions,
       campaign.advertising_channel_type
-    FROM campaign
-    WHERE segments.date >= '${startDateString}' AND segments.date <= '${endDateString}'
+    FROM ad_group
+    WHERE
+      segments.date >= '${startDateString}' AND segments.date <= '${endDateString}'
       AND metrics.conversions > 0
   `;
 
@@ -52,23 +65,28 @@
     while (rows.hasNext()) {
       const row = rows.next();
 
-      // ★★★【変更点】デバイス名とチャネル名の表記を統一する ★★★
       let device = row['segments.device'];
       if (device === 'Mobile devices with full browsers') device = 'MOBILE';
       if (device === 'Computers') device = 'DESKTOP';
       if (device === 'Tablets with full browsers') device = 'TABLET';
       if (device === 'Other') device = 'OTHER';
-      if (device === 'Devices streaming video content to TV screens') device = 'STREAMING_TV';
+      if (device === 'Connected TV') device = 'STREAMING_TV';
 
       const channel = row['campaign.advertising_channel_type'].toUpperCase();
 
+      // ★★★【変更点】書き込むデータを修正 ★★★
       dataToWrite.push([
         row['segments.date'],
-        device, // 統一したデバイス名
+        device,
         row['campaign.name'],
+        row['campaign.id'],
+        row['ad_group.name'],
+        row['ad_group.id'],
+        row['ad_group.status'],
+        row['ad_group.type'],
         row['segments.conversion_action_name'],
         row['metrics.conversions'],
-        channel // 統一したチャネル名
+        channel
       ]);
     }
 
