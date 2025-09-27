@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>広告運用詳細レポート (検索広告)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', 'Noto Sans JP', sans-serif; background-color: #f3f4f6; }
+      .tab-active { border-color: #3b82f6; color: #3b82f6; background-color: #ffffff; }
+      #loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20vh auto; }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+    <div id="loader"></div>
+    <div id="report-container" class="max-w-7xl mx-auto bg-gray-100 hidden">
+        <!-- ヘッダー部分は後からJSで挿入 -->
+        <div id="report-header" class="mb-6"></div>
+
+        <div class="mb-6"><div class="border-b border-gray-200"><nav class="-mb-px flex space-x-6" aria-label="Tabs">
+            <button onclick="changeTab('summary')" id="tab-summary" class="tab-active whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">サマリー</button>
+            <button onclick="changeTab('monthly')" id="tab-monthly" class="text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">月別データ</button>
+            <button onclick="changeTab('keyword')" id="tab-keyword" class="text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">キーワード別実績</button>
+        </nav></div></div>
+
+        <!-- 各タブのコンテンツは後からJSで挿入 -->
+        <div id="content-summary" class="tab-content"></div>
+        <div id="content-monthly" class="tab-content hidden"></div>
+        <div id="content-keyword" class="tab-content hidden"></div>
+    </div>
+
+    <script>
+      // ページの読み込みが完了したら実行
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log("HTML: ページ読み込み完了。サーバーからデータ取得を開始します。");
+        const urlParams = new URLSearchParams(window.location.search);
+        const refresh = urlParams.get('refresh') === 'true';
+
+        google.script.run
+          .withSuccessHandler(buildReport)
+          .withFailureHandler(showError)
+          .getReportData(refresh);
+      });
+
+      function showError(error) {
+        console.error("Apps Script 実行エラー:", error);
+        const loader = document.getElementById('loader');
+        loader.style.display = 'none';
+        const container = document.getElementById('report-container');
+        container.innerHTML = `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert"><strong class="font-bold">エラー:</strong><span class="block sm:inline"> ${error.message}</span></div>`;
+        container.classList.remove('hidden');
+      }
+
+      function buildReport(data) {
+        try {
+          console.log("HTML: サーバーからデータを受信しました。レポートの構築を開始します。", data);
+          const { lastMonthData, prevMonthData, monthlyData } = data;
+
+          // ヘッダーを生成
+          console.log("HTML: ヘッダーを構築中...");
+          const headerHtml = `
+            <h1 class="text-3xl font-bold text-gray-800">広告運用詳細レポート (検索広告)</h1>
+            <p class="text-gray-500">期間: ${lastMonthData.period}</p>
+            <p class="text-sm text-gray-500">比較対象期間: ${prevMonthData.period}</p>
+          `;
+          document.getElementById('report-header').innerHTML = headerHtml;
+          console.log("HTML: ヘッダー構築完了。");
+
+          // --- サマリータブを生成 ---
+          console.log("HTML: サマリータブを構築中...");
+          buildSummaryTab(lastMonthData, prevMonthData);
+          console.log("HTML: サマリータブ構築完了。");
+
+          // --- 月別データタブを生成 ---
+          console.log("HTML: 月別データタブを構築中...");
+          buildMonthlyTab(monthlyData);
+          console.log("HTML: 月別データタブ構築完了。");
+
+          // --- キーワードタブを生成 ---
+          console.log("HTML: キーワードタブを構築中...");
+          buildKeywordTab(lastMonthData.keywordData);
+          console.log("HTML: キーワードタブ構築完了。");
+
+          // ローダーを非表示にし、レポートを表示
+          document.getElementById('loader').style.display = 'none';
+          document.getElementById('report-container').classList.remove('hidden');
+          console.log("HTML: レポート表示完了。");
+
+          // Gemini 総括を非同期で取得
+          console.log("HTML: Gemini APIから総括の取得を開始します...");
+          google.script.run
+            .withSuccessHandler(summary => {
+              console.log("HTML: Geminiから総括を受信しました。");
+              document.getElementById('summary-text').innerHTML = summary;
+              console.log("HTML: 総括の表示完了。");
+            })
+            .withFailureHandler(error => {
+              console.error("HTML: Gemini総括の取得に失敗しました。", error);
+              document.getElementById('summary-text').innerHTML = `<p class="text-red-600">総括の取得に失敗しました。</p>`;
+            })
+            .getGeminiSummary(lastMonthData, prevMonthData);
+
+        } catch (e) {
+          console.error("HTML: レポート構築中に致命的なエラーが発生しました。", e);
+          showError(e);
+        }
+      }
+
+      function buildSummaryTab(lastMonth, prevMonth) {
+        const getChange = (current, previous) => previous > 0 ? ((current / previous) - 1) * 100 : 0;
+        const costChange = getChange(lastMonth.totalCost, prevMonth.totalCost);
+        const clicksChange = getChange(lastMonth.totalClicks, prevMonth.totalClicks);
+        const cvChange = getChange(lastMonth.totalConversions, prevMonth.totalConversions);
+
+        const summaryHtml = `
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">費用</h3><p class="mt-1 text-2xl font-bold text-gray-900">¥${Math.round(lastMonth.totalCost).toLocaleString()}</p><p class="mt-1 text-xs ${costChange >= 0 ? 'text-red-600' : 'text-green-600'}">(${costChange.toFixed(1)}% vs 前月)</p></div>
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">クリック数</h3><p class="mt-1 text-2xl font-bold text-gray-900">${lastMonth.totalClicks.toLocaleString()}</p><p class="mt-1 text-xs ${clicksChange >= 0 ? 'text-green-600' : 'text-red-600'}">(${clicksChange.toFixed(1)}% vs 前月)</p></div>
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">CTR</h3><p class="mt-1 text-2xl font-bold text-gray-900">${(lastMonth.ctr * 100).toFixed(2)}%</p></div>
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">CV</h3><p class="mt-1 text-2xl font-bold text-gray-900">${lastMonth.totalConversions.toLocaleString()}</p><p class="mt-1 text-xs ${cvChange >= 0 ? 'text-green-600' : 'text-red-600'}">(${cvChange.toFixed(1)}% vs 前月)</p></div>
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">CVR</h3><p class="mt-1 text-2xl font-bold text-gray-900">${(lastMonth.cvr * 100).toFixed(2)}%</p></div>
+              <div class="bg-white p-4 rounded-lg shadow-sm text-center"><h3 class="text-sm font-medium text-gray-500">CPA</h3><p class="mt-1 text-2xl font-bold text-gray-900">¥${Math.round(lastMonth.cpa).toLocaleString()}</p></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
+            <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow-sm">
+              <h3 class="font-semibold text-gray-800 mb-4">デバイス別CV比率</h3>
+              <div class="relative h-80"><canvas id="deviceChart"></canvas></div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm">
+              <h3 class="font-semibold text-gray-800 mb-4">総括</h3>
+              <div id="summary-text" class="space-y-4 text-sm text-gray-700">読み込み中...</div>
+            </div>
+          </div>
+          <div class="bg-white p-4 sm:p-6 rounded-lg shadow-sm overflow-x-auto">
+            <h3 class="font-semibold text-gray-800 mb-4">キャンペーン別実績</h3>
+            <table id="campaign-table" class="w-full text-sm text-left text-gray-500"></table>
+          </div>
+        `;
+        document.getElementById('content-summary').innerHTML = summaryHtml;
+
+        // デバイス別グラフを描画
+        const deviceLabels = Object.keys(lastMonth.deviceData);
+        const deviceCvData = deviceLabels.map(label => lastMonth.deviceData[label].conversions);
+        const deviceCtx = document.getElementById('deviceChart').getContext('2d');
+        new Chart(deviceCtx, { type: 'doughnut', data: { labels: deviceLabels, datasets: [{ data: deviceCvData, backgroundColor: ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'] }] }, options: { responsive: true, maintainAspectRatio: false } });
+
+        // キャンペーン別テーブルを生成
+        let campaignTableHtml = `<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-3 py-3">キャンペーン</th><th scope="col" class="px-3 py-3 text-right">費用</th><th scope="col" class="px-3 py-3 text-right">クリック数</th><th scope="col" class="px-3 py-3 text-right">CV</th><th scope="col" class="px-3 py-3 text-right">CPA</th></tr></thead><tbody>`;
+        Object.keys(lastMonth.campaignData).sort((a,b) => lastMonth.campaignData[b].cost - lastMonth.campaignData[a].cost).forEach(name => {
+          const c = lastMonth.campaignData[name];
+          const cpa = c.conversions > 0 ? Math.round(c.cost / c.conversions) : 0;
+          campaignTableHtml += `<tr class="bg-white border-b hover:bg-gray-50"><th scope="row" class="px-3 py-3 font-medium text-gray-900 whitespace-nowrap">${name}</th><td class="px-3 py-3 text-right">¥${Math.round(c.cost).toLocaleString()}</td><td class="px-3 py-3 text-right">${c.clicks.toLocaleString()}</td><td class="px-3 py-3 text-right font-bold">${c.conversions.toLocaleString()}</td><td class="px-3 py-3 text-right">¥${cpa.toLocaleString()}</td></tr>`;
+        });
+        campaignTableHtml += `</tbody>`;
+        document.getElementById('campaign-table').innerHTML = campaignTableHtml;
+      }
+
+      function buildMonthlyTab(monthlyData) {
+        const sortedMonths = Object.keys(monthlyData).sort();
+        const monthlyHeaders = sortedMonths.map(m => {
+            const [year, month] = m.split('-');
+            return `${year}年${parseInt(month, 10)}月`;
+        });
+
+        const getMonthlyRow = (label, key, format) => {
+            let cells = '';
+            sortedMonths.forEach(m => {
+                let value = monthlyData[m][key];
+                switch (format) {
+                    case 'yen': value = `¥${Math.round(value).toLocaleString()}`; break;
+                    case 'percent': value = `${(value * 100).toFixed(2)}%`; break;
+                    case 'number': value = value.toLocaleString(); break;
+                }
+                cells += `<td class="px-3 py-3 text-right whitespace-nowrap border-l border-gray-300">${value}</td>`;
+            });
+            return `<tr><td class="px-3 py-3 font-medium whitespace-nowrap sticky left-0 bg-white z-10 border-l-4 border-white border-r border-gray-300">${label}</td>${cells}</tr>`;
+        };
+
+        const simulationData = [
+          "出稿費|¥70,000|¥70,000|¥70,000|¥70,000|¥70,000", "クリック単価|¥600|¥550|¥500|¥450|¥400", "クリック数|117|127|140|156|175",
+          "実CVR 0.37%|0.43|0.47|0.52|0.58|0.65", "実CVR 0.43%|0.50|0.55|0.60|0.67|0.75",
+          "実CVR 1.00%|1.17|1.27|1.40|1.56|1.75", "実CVR 1.41%|1.65|1.79|1.97|2.19|2.47"
+        ];
+        const simulationTableRows = simulationData.map(rowStr => {
+            const cells = rowStr.split('|');
+            const header = cells.shift();
+            const dataCells = cells.map(cell => `<td class="px-6 py-4 text-right">${cell}</td>`).join('');
+            return `<tr><td class="px-6 py-4 font-medium">${header}</td>${dataCells}</tr>`;
+        }).join('');
+
+        const monthlyHtml = `
+          <div class="bg-white p-4 sm:p-6 rounded-lg shadow-sm mb-6">
+              <h3 class="font-semibold text-gray-800 mb-4">月別実績データ</h3>
+              <div id="monthly-table-container" class="overflow-x-auto">
+                  <table class="w-full text-sm text-left text-gray-500">
+                      <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-20">
+                          <tr>
+                              <th class="px-3 py-3 sticky left-0 bg-gray-50 z-30 border-l-4 border-gray-50 border-r border-gray-300">指標</th>
+                              ${monthlyHeaders.map(h => `<th class="px-3 py-3 text-right min-w-[150px] border-l border-gray-300">${h}</th>`).join('')}
+                          </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-200">
+                          ${getMonthlyRow('表示回数', 'imp', 'number')}
+                          ${getMonthlyRow('クリック数', 'clicks', 'number')}
+                          ${getMonthlyRow('クリック率 (CTR)', 'ctr', 'percent')}
+                          ${getMonthlyRow('平均クリック単価 (CPC)', 'cpc', 'yen')}
+                          ${getMonthlyRow('コンバージョン数 (CV)', 'cv', 'number')}
+                          ${getMonthlyRow('コンバージョン率 (CVR)', 'cvr', 'percent')}
+                          ${getMonthlyRow('コンバージョン単価 (CPA)', 'cpa', 'yen')}
+                          ${getMonthlyRow('ご利用額', 'cost', 'yen')}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+          <div class="bg-white p-6 rounded-lg shadow-sm mb-6"><h3 class="font-semibold text-gray-800 mb-4">月別 CPC・CVR 推移</h3><div class="relative h-80"><canvas id="monthlyTrendChart"></canvas></div></div>
+          <div class="bg-white p-4 sm:p-6 rounded-lg shadow-sm overflow-x-auto">
+              <h3 class="font-semibold text-gray-800 mb-4">シミュレーション</h3>
+              <table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th class="px-6 py-3">指標</th><th class="px-6 py-3 text-right">1ヶ月目</th><th class="px-6 py-3 text-right">2ヶ月目</th><th class="px-6 py-3 text-right">3ヶ月目</th><th class="px-6 py-3 text-right">4ヶ月目</th><th class="px-6 py-3 text-right">5ヶ月目</th></tr></thead><tbody class="divide-y divide-gray-200">${simulationTableRows}</tbody></table>
+          </div>
+        `;
+        document.getElementById('content-monthly').innerHTML = monthlyHtml;
+
+        const monthlyChartLabels = sortedMonths.map(m => m.replace('-', '/'));
+        const monthlyCpcData = sortedMonths.map(m => Math.round(monthlyData[m].cpc));
+        const monthlyCvrData = sortedMonths.map(m => (monthlyData[m].cvr * 100).toFixed(2));
+        const monthlyTrendCtx = document.getElementById('monthlyTrendChart').getContext('2d');
+        new Chart(monthlyTrendCtx, {
+            type: 'line',
+            data: {
+                labels: monthlyChartLabels,
+                datasets: [
+                    { label: '平均クリック単価 (CPC)', data: monthlyCpcData, borderColor: '#3b82f6', backgroundColor: '#3b82f6', yAxisID: 'yCpc', tension: 0.1 },
+                    { label: 'コンバージョン率 (CVR)', data: monthlyCvrData, borderColor: '#f97616', backgroundColor: '#f97616', yAxisID: 'yCvr', tension: 0.1 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { yCpc: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'CPC (円)' } }, yCvr: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'CVR (%)' }, grid: { drawOnChartArea: false } } } }
+        });
+      }
+
+      function buildKeywordTab(keywordData) {
+        let keywordTableHtml = `<div class="bg-white p-4 sm:p-6 rounded-lg shadow-sm overflow-x-auto"><h3 class="font-semibold text-gray-800 mb-4">キーワード別実績</h3><p class="text-xs text-gray-500 mb-4">※この表のコンバージョン数はキーワード別データの数値を参照しています。</p><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">キーワード</th><th scope="col" class="px-6 py-3">マッチタイプ</th><th scope="col" class="px-6 py-3 text-right">費用</th><th scope="col" class="px-6 py-3 text-right">クリック数</th><th scope="col" class="px-6 py-3 text-right">CV数</th></tr></thead><tbody>`;
+        Object.keys(keywordData).sort((a,b) => keywordData[b].cost - keywordData[a].cost).slice(0, 50).forEach(kw => {
+          const k = keywordData[kw];
+          keywordTableHtml += `<tr class="bg-white border-b hover:bg-gray-50"><th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${kw}</th><td class="px-6 py-4">${k.match}</td><td class="px-6 py-4 text-right">¥${Math.round(k.cost).toLocaleString()}</td><td class="px-6 py-4 text-right">${k.clicks.toLocaleString()}</td><td class="px-6 py-4 text-right font-bold">${k.cvs.toLocaleString()}</td></tr>`;
+        });
+        keywordTableHtml += `</tbody></table></div>`;
+        document.getElementById('content-keyword').innerHTML = keywordTableHtml;
+      }
+
+      function changeTab(selectedTab) {
+          ['summary', 'monthly', 'keyword'].forEach(tab => {
+              document.getElementById(\`tab-\${tab}\`).classList.toggle('tab-active', tab === selectedTab);
+              document.getElementById(\`tab-\${tab}\`).classList.toggle('text-gray-500', tab !== selectedTab);
+              document.getElementById(\`content-\${tab}\`).classList.toggle('hidden', tab !== selectedTab);
+          });
+          if (selectedTab === 'monthly') {
+              const tableContainer = document.getElementById('monthly-table-container');
+              if(tableContainer) tableContainer.scrollLeft = tableContainer.scrollWidth;
+          }
+      }
+    </script>
+</body>
+</html>
