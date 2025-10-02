@@ -2,7 +2,7 @@
  * 【日次更新専用版】
  * 常に、シートの最終行の翌日から昨日までの未取得データを追記します。
  */
- function main() {
+function main() {
 
   // ▼▼【要設定】▼▼ 記録したいスプレッドシートのURLを貼り付けてください
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
@@ -41,7 +41,10 @@
     startDateString = endDateString;
   } else { // データがある場合は、最終日の翌日から取得
     console.log('通常実行：未取得の期間のデータを取得します。');
-    const lastDate = new Date(sheet.getRange(sheet.getLastRow(), 1).getValue());
+    // 日付列の最終行の値を取得
+    const lastDateValue = sheet.getRange(sheet.getLastRow(), 1).getValue();
+    const lastDate = new Date(lastDateValue); // 日付文字列からDateオブジェクトに変換
+
     const startDate = new Date(lastDate);
     startDate.setDate(lastDate.getDate() + 1);
 
@@ -115,6 +118,17 @@
       // データをシートの末尾に一括で追記
       sheet.getRange(sheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
       console.log(`${dataToWrite.length}件のデータを追記しました。`);
+
+      // データ追加後にシート全体を日付でソート
+      const lastRow = sheet.getLastRow();
+      if (lastRow > 1) { // ヘッダー行を除いてデータがある場合
+        const rangeToSort = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn());
+        rangeToSort.sort({
+          column: 1, // 1列目（日付）でソート
+          ascending: true // 昇順
+        });
+        console.log('スプレッドシートを日付順にソートしました。');
+      }
     } else {
       console.log('期間内に記録対象のデータはありませんでした。');
     }

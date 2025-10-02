@@ -1,6 +1,7 @@
 /**
  * 【性別データ取得・日次更新版】
- * 初回は過去90日分、以降は毎日、日別の性別データを追記する。
+ * 未取得の性別データを追記し、シート全体を日付順に並べ替える。
+ * 項目名の誤りを修正。
  */
  function main() {
 
@@ -28,7 +29,7 @@
       console.log('ヘッダー行を新規設定しました。');
     }
 
-    // ★★★【変更点】日次更新用の期間設定ロジック ★★★
+    // --- ここから修正箇所：日次更新用の取得期間を決定 ---
     const accountTimezone = AdsApp.currentAccount().getTimeZone();
     let startDateString, endDateString;
 
@@ -37,27 +38,28 @@
     yesterday.setDate(today.getDate() - 1);
     endDateString = Utilities.formatDate(yesterday, accountTimezone, "yyyyMMdd");
 
-    if (sheet.getLastRow() <= 1) { // 初回実行
-      console.log('初回実行：過去90日分のデータを取得します。');
-      const startDate = new Date();
-      startDate.setDate(today.getDate() - 90);
-      startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
-    } else { // 通常実行
-      console.log('通常実行：未取得の期間のデータを取得します。');
-      const lastDate = new Date(sheet.getRange(sheet.getLastRow(), 1).getValue());
+    if (sheet.getLastRow() <= 1) { // ヘッダー行のみ、またはデータがない場合
+      console.log('データがないため、昨日1日分のデータを取得します。');
+      startDateString = endDateString;
+    } else { // データがある場合は、最終日の翌日から取得
+      const lastDateValue = sheet.getRange(sheet.getLastRow(), 1).getValue();
+      const lastDate = new Date(lastDateValue);
       const startDate = new Date(lastDate);
       startDate.setDate(lastDate.getDate() + 1);
 
+      // 既にデータが最新の場合は処理を終了
       if (startDate > yesterday) {
-        console.log('データは既に最新です。');
+        console.log('データは既に最新です。処理を終了します。');
         return;
       }
       startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
     }
 
-    console.log('取得期間: ' + startDateString + ' - ' + endDateString);
+    console.log(`取得期間: ${startDateString} から ${endDateString}`);
+    // --- ここまで修正箇所 ---
 
-    // --- GAQLクエリを作成 ---
+
+    // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
     const query = `
       SELECT
         segments.date,
@@ -72,10 +74,6 @@
       WHERE
         segments.date >= '${startDateString}'
         AND segments.date <= '${endDateString}'
-      ORDER BY
-        segments.date ASC,
-        campaign.name ASC,
-        ad_group.name ASC
     `;
 
     const report = AdsApp.report(query);
@@ -85,6 +83,7 @@
     while (rows.hasNext()) {
       const row = rows.next();
 
+      // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
       let gender = row['ad_group_criterion.gender.type'];
       if (gender === 'MALE') gender = '男性';
       if (gender === 'FEMALE') gender = '女性';
@@ -104,7 +103,13 @@
 
     if (dataToWrite.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
-      console.log(`${dataToWrite.length}件のデータを記録しました。`);
+      console.log(`${dataToWrite.length}件のデータを追記しました。`);
+
+      if (sheet.getLastRow() > 1) {
+        const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+        dataRange.sort({column: 1, ascending: true});
+        console.log('シート全体を日付順に並べ替えました。');
+      }
     } else {
       console.log('期間内に記録対象のデータはありませんでした。');
     }

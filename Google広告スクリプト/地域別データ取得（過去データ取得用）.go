@@ -128,13 +128,20 @@ function main() {
   Logger.log('Step 3: データを結合して出力します...');
   const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
-  if (!sheet) sheet = spreadsheet.insertSheet(SHEET_NAME);
-  sheet.clear();
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(SHEET_NAME);
+  }
+
+  // sheet.clear(); // この行を削除して、上書きを防ぎます
 
   const headers = ['日付', 'ターゲット地域', 'クリック数', '表示回数', '費用', 'コンバージョン数'];
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-  sheet.getRange("A:A").setNumberFormat('yyyy-mm-dd');
-  sheet.getRange("B:B").setNumberFormat('@');
+
+  // ヘッダー行がまだない場合（シートが空の場合）のみ、ヘッダーを追加します
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.getRange("A:A").setNumberFormat('yyyy-mm-dd');
+    sheet.getRange("B:B").setNumberFormat('@');
+  }
 
   const outputData = [];
   for (const key in performanceData) {
@@ -149,10 +156,15 @@ function main() {
   }
 
   if (outputData.length > 0) {
-    // ★★★ 日付の昇順（古い順）、次にクリック数の降順でソートするように修正 ★★★
-    outputData.sort((a, b) => new Date(a[0]) - new Date(b[0]) || b[2] - a[2]);
-    sheet.getRange(2, 1, outputData.length, headers.length).setValues(outputData);
-    Logger.log(`${outputData.length} 行のデータをスプレッドシートに出力しました。`);
+    // データをシートの末尾に追記します
+    sheet.getRange(sheet.getLastRow() + 1, 1, outputData.length, headers.length).setValues(outputData);
+    Logger.log(`${outputData.length} 行のデータをスプレッドシートに追記しました。`);
+
+    // 追記後、ヘッダー行を除いたシート全体を日付でソートします
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+    dataRange.sort({column: 1, ascending: true}); // 1列目（日付）を昇順でソート
+    Logger.log('シート全体を日付順にソートしました。');
+
   } else {
     Logger.log('最終的な出力データが見つかりませんでした。');
   }
