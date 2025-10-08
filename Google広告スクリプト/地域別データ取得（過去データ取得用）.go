@@ -15,9 +15,31 @@ const SHEET_NAME = '地域別データ';
 // メイン処理
 // --------------------------------------------------------------------------------
 function main() {
-  const START_DATE_STR = `${YEAR}-01-01`;
-  const END_DATE_STR = `${YEAR}-12-31`;
+  // --- 取得期間を決定するロジック ---
+  const accountTimezone = AdsApp.currentAccount().getTimeZone();
+  const startDate = new Date(YEAR, 0, 1); // 指定年の1月1日
+
+  // スクリプト実行日の前々日を計算
+  const today = new Date();
+  const dayBeforeYesterday = new Date(today);
+  dayBeforeYesterday.setDate(today.getDate() - 2);
+
+  // 取得終了日を、指定年の12月31日と前々日のうち、どちらか早い方に設定
+  let endDate = new Date(YEAR, 11, 31); // 指定年の12月31日
+  if (endDate > dayBeforeYesterday) {
+    endDate = dayBeforeYesterday;
+  }
+
+  // もしstartDateがendDateより後の日付になってしまう場合は、処理をスキップ
+  if (startDate > endDate) {
+    Logger.log(`指定年(${YEAR})のデータは、まだ前々日までの範囲に達していません。`);
+    return;
+  }
+
+  const START_DATE_STR = Utilities.formatDate(startDate, accountTimezone, "yyyy-MM-dd");
+  const END_DATE_STR = Utilities.formatDate(endDate, accountTimezone, "yyyy-MM-dd");
   Logger.log(`データ取得範囲: ${START_DATE_STR} から ${END_DATE_STR}`);
+
 
   // --- Step 1: パフォーマンス指標と地域IDを日別に取得 ---
   Logger.log('Step 1: パフォーマンスデータを取得しています...');

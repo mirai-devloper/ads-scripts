@@ -1,7 +1,8 @@
 /**
- * 【性別データ取得・年指定版】
- * 指定した1年分の性別データを追記し、シート全体を日付順に並べ替える。
- * 項目名の誤りを修正。
+ * 【年齢別・CVアクション別データ取得・年指定版】
+ * 指定した1年分の年齢別・コンバージョンアクション別のデータを追記し、シート全体を日付順に並べ替える。
+ * ★広告チャネルタイプを追加（大文字）
+ * ★年齢の値を日本語に変換（AGE_RANGE_UNDETERMINED と UNDETERMINED に対応）
  * ★データの取得は最大で「前々日」までとします。
  */
  function main() {
@@ -13,7 +14,7 @@
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = '性別データ';
+  const SHEET_NAME = '年齢別CVアクションデータ'; // シート名を変更
 
   // --- スプレッドシートの準備 ---
   const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
@@ -23,9 +24,10 @@
   }
 
   try {
+    // ヘッダーの「性別」を「年齢」に変更
     const japaneseHeaders = [
-      '日付', 'キャンペーン名', '広告グループ名', '性別',
-      '表示回数', 'クリック数', '費用', 'コンバージョン数'
+      '日付', 'キャンペーン名', '広告チャネルタイプ', '広告グループ名', '年齢',
+      'コンバージョンアクション名', 'コンバージョン数'
     ];
 
     if (sheet.getLastRow() === 0) {
@@ -59,21 +61,21 @@
 
     console.log(`取得期間: ${startDateString} から ${endDateString}`);
 
-    // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
+    // クエリを性別用から年齢用に変更
     const query = `
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         ad_group.name,
-        ad_group_criterion.gender.type,
-        metrics.impressions,
-        metrics.clicks,
-        metrics.cost_micros,
+        ad_group_criterion.age_range.type,
+        segments.conversion_action_name,
         metrics.conversions
-      FROM gender_view
+      FROM age_range_view
       WHERE
         segments.date >= '${startDateString}'
         AND segments.date <= '${endDateString}'
+        AND metrics.conversions > 0
     `;
 
     const report = AdsApp.report(query);
@@ -83,20 +85,42 @@
     while (rows.hasNext()) {
       const row = rows.next();
 
-      // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
-      let gender = row['ad_group_criterion.gender.type'];
-      if (gender === 'MALE') gender = '男性';
-      if (gender === 'FEMALE') gender = '女性';
-      if (gender === 'UNDETERMINED') gender = '不明';
+      let ageRange = row['ad_group_criterion.age_range.type'];
+      // ★年齢の値を日本語に変換する処理を修正 (AGE_RANGE_UNDETERMINED と UNDETERMINED に対応)
+      switch (ageRange) {
+        case 'AGE_RANGE_18_24':
+          ageRange = '18歳～24歳';
+          break;
+        case 'AGE_RANGE_25_34':
+          ageRange = '25歳～34歳';
+          break;
+        case 'AGE_RANGE_35_44':
+          ageRange = '35歳～44歳';
+          break;
+        case 'AGE_RANGE_45_54':
+          ageRange = '45歳～54歳';
+          break;
+        case 'AGE_RANGE_55_64':
+          ageRange = '55歳～64歳';
+          break;
+        case 'AGE_RANGE_65_UP':
+          ageRange = '65歳～';
+          break;
+        case 'UNDETERMINED':
+        case 'AGE_RANGE_UNDETERMINED': // ★AGE_RANGE_UNDETERMINED も「不明」に変換
+          ageRange = '不明';
+          break;
+        // その他の値があればここに追加
+      }
 
+      // 書き込むデータを年齢用に変更
       dataToWrite.push([
         row['segments.date'],
         row['campaign.name'],
+        row['campaign.advertising_channel_type'],
         row['ad_group.name'],
-        gender,
-        row['metrics.impressions'],
-        row['metrics.clicks'],
-        row['metrics.cost_micros'] / 1000000,
+        ageRange, // 変換後の年齢データを追加
+        row['segments.conversion_action_name'],
         row['metrics.conversions']
       ]);
     }

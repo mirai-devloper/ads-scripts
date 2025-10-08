@@ -1,6 +1,7 @@
 /**
  * 【広告グループ版・年指定・追記・自動ソート】
  * 指定した1年分の広告グループデータを取得し、シートに追記後、全体を日付順に並べ替えます。
+ * ★データの取得は最大で「前々日」までとします。
  */
  function main() {
 
@@ -65,8 +66,25 @@
 
     // --- 取得期間を決定するロジック ---
     const accountTimezone = AdsApp.currentAccount().getTimeZone();
-    const startDate = new Date(TARGET_YEAR, 0, 1);
-    const endDate = new Date(TARGET_YEAR, 11, 31);
+    const startDate = new Date(TARGET_YEAR, 0, 1); // 指定年の1月1日
+
+    // スクリプト実行日の前々日を計算
+    const today = new Date();
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+
+    // 取得終了日を、指定年の12月31日と前々日のうち、どちらか早い方に設定
+    let endDate = new Date(TARGET_YEAR, 11, 31); // 指定年の12月31日
+    if (endDate > dayBeforeYesterday) {
+      endDate = dayBeforeYesterday;
+    }
+
+    // もしstartDateがendDateより後の日付になってしまう場合は、処理をスキップ
+    if (startDate > endDate) {
+      console.log(`指定年(${TARGET_YEAR})のデータは、まだ前々日までの範囲に達していません。`);
+      return;
+    }
+
     const startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
     const endDateString = Utilities.formatDate(endDate, accountTimezone, "yyyyMMdd");
     const reportPeriod = startDateString + ',' + endDateString;
@@ -122,7 +140,7 @@
 
       // シート全体を日付で並べ替え（ヘッダー行を除く）
       if (sheet.getLastRow() > 1) {
-        // 日付列は8番目 (H列)
+        // 日付列は1番目 (A列)
         const dateColumnIndex = 1;
         const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
         dataRange.sort({column: dateColumnIndex, ascending: true});

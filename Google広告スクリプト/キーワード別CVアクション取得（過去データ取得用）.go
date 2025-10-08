@@ -1,7 +1,8 @@
 /**
- * 【年指定・追記・自動ソート版】
- * 指定した1年分のデータを追記し、シート全体を日付順に並べ替えます。
- * デバイス名・チャネル名の表記を統一し、金額の単位を修正。
+ * 【キーワード別CVアクションレポート版】
+ * 指定した1年分のキーワード・コンバージョンアクション別データを追記し、シート全体を日付順に並べ替えます。
+ * マッチタイプを日本語に変換。
+ * ★コンバージョン数を整数に丸める処理を追加。
  * ★データの取得は最大で「前々日」までとします。
  */
  function main() {
@@ -13,7 +14,7 @@
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = '基本データ';
+  const SHEET_NAME = 'キーワードCVアクションデータ'; // シート名を変更
 
   // --- スプレッドシートの準備 ---
   if (SPREADSHEET_URL.indexOf('https://docs.google.com/spreadsheets/d/') === -1) {
@@ -27,11 +28,15 @@
   }
 
   try {
+    // APIフィールドから表示回数・クリック数・費用を削除し、コンバージョンアクション名を追加
     const apiFields = [
-      'Date', 'Device', 'AccountDescriptiveName', 'CampaignId', 'CampaignName', 'CampaignStatus', 'AdvertisingChannelType', 'BiddingStrategyType', 'Impressions', 'Clicks', 'Cost', 'Ctr', 'AverageCpc', 'Conversions', 'ConversionRate', 'CostPerConversion', 'AllConversions', 'AllConversionRate', 'CostPerAllConversion', 'ViewThroughConversions', 'Interactions', 'InteractionRate', 'AverageCost', 'AverageCpm', 'AverageCpv', 'SearchImpressionShare', 'SearchTopImpressionShare', 'SearchAbsoluteTopImpressionShare', 'SearchBudgetLostImpressionShare', 'SearchRankLostImpressionShare', 'ContentImpressionShare', 'ContentBudgetLostImpressionShare', 'ContentRankLostImpressionShare', 'VideoViews', 'VideoViewRate', 'VideoQuartile25Rate', 'VideoQuartile50Rate', 'VideoQuartile75Rate', 'VideoQuartile100Rate'
+      'Date', 'Device', 'CampaignName', 'AdGroupName', 'Criteria', 'KeywordMatchType',
+      'ConversionTypeName', 'Conversions', 'ConversionValue'
     ];
+    // ヘッダーも上記に合わせて変更
     const japaneseHeaders = [
-      '日付', 'デバイス', 'アカウント名', 'キャンペーンID', 'キャンペーン名', 'キャンペーンステータス', '広告チャネルタイプ', '入札戦略タイプ', '表示回数', 'クリック数', 'ご利用額', 'クリック率', '平均クリック単価', 'コンバージョン', 'コンバージョン率', 'コンバージョン単価', 'すべてのコンバージョン', 'すべてのコンバージョン率', 'すべてのコンバージョン単価', 'ビュースルーコンバージョン', 'インタラクション', 'インタラクション率', '平均費用', '平均CPM', '平均CPV', '検索IS', '検索TOP IS', '検索Abs.TOP IS', '検索IS損失率(予算)', '検索IS損失率(ランク)', 'コンテンツIS', 'コンテンツIS損失率(予算)', 'コンテンツIS損失率(ランク)', '動画再生回数', '動画再生率', '動画再生25%', '動画再生50%', '動画再生75%', '動画再生100%'
+      '日付', 'デバイス', 'キャンペーン名', '広告グループ名', 'キーワード', 'マッチタイプ',
+      'コンバージョンアクション名', 'コンバージョン数', 'コンバージョン価値'
     ];
 
     if (sheet.getLastRow() === 0) {
@@ -67,7 +72,14 @@
     console.log('取得期間: ' + reportPeriod);
 
     // --- レポートを取得 ---
-    const query = 'SELECT ' + apiFields.join(', ') + ' FROM CAMPAIGN_PERFORMANCE_REPORT DURING ' + reportPeriod + ' ORDER BY Date ASC';
+    // 条件に「Conversions > 0」を追加し、CVが発生したデータのみ取得
+    const query =
+      'SELECT ' + apiFields.join(', ') + ' ' +
+      'FROM KEYWORDS_PERFORMANCE_REPORT ' +
+      'WHERE Conversions > 0 ' +
+      'DURING ' + reportPeriod + ' ' +
+      'ORDER BY Date ASC';
+
     const report = AdsApp.report(query);
     const rows = report.rows();
 
@@ -76,7 +88,6 @@
       const row = rows.next();
       const newRow = [];
 
-      // ★★★【変更点】データを1つずつ処理し、表記と単位を統一 ★★★
       for (let i = 0; i < apiFields.length; i++) {
         const fieldName = apiFields[i];
         let value = row[fieldName];
@@ -90,9 +101,16 @@
           if (value === 'Devices streaming video content to TV screens') value = 'STREAMING_TV';
         }
 
-        // チャネル名を大文字に統一
-        if (fieldName === 'AdvertisingChannelType') {
-          if (value) value = value.toUpperCase();
+        // マッチタイプを日本語に変換
+        if (fieldName === 'KeywordMatchType') {
+          if (value === 'Broad') value = '部分一致';
+          else if (value === 'Exact') value = '完全一致';
+          else if (value === 'Phrase') value = 'フレーズ一致';
+        }
+
+        // ★★★ 修正箇所: コンバージョン数に小数点がある場合、整数に丸める ★★★
+        if (fieldName === 'Conversions' && typeof value === 'number') {
+          value = Math.round(value);
         }
 
         newRow.push(value);
@@ -101,11 +119,9 @@
     }
 
     if (dataToWrite.length > 0) {
-      // データをシートの末尾に一括で追記
       sheet.getRange(sheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
       console.log(dataToWrite.length + '件のデータを追記しました。');
 
-      // シート全体を日付で並べ替え
       if (sheet.getLastRow() > 1) {
         const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
         dataRange.sort({column: 1, ascending: true});

@@ -1,7 +1,7 @@
 /**
- * 【性別データ取得・年指定版】
- * 指定した1年分の性別データを追記し、シート全体を日付順に並べ替える。
- * 項目名の誤りを修正。
+ * 【性別・CVアクション別データ取得・年指定版】
+ * 指定した1年分の性別・コンバージョンアクション別のデータを追記し、シート全体を日付順に並べ替える。
+ * ★広告チャネルタイプを追加（大文字）
  * ★データの取得は最大で「前々日」までとします。
  */
  function main() {
@@ -13,7 +13,7 @@
   const SPREADSHEET_URL = 'スプレッドシートのURLをここに貼り付けてください';
 
   // ▼設定▼ 記録先のシート名を指定してください
-  const SHEET_NAME = '性別データ';
+  const SHEET_NAME = '性別CVアクションデータ'; // シート名を変更
 
   // --- スプレッドシートの準備 ---
   const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
@@ -23,9 +23,10 @@
   }
 
   try {
+    // ヘッダーに「広告チャネルタイプ」を追加
     const japaneseHeaders = [
-      '日付', 'キャンペーン名', '広告グループ名', '性別',
-      '表示回数', 'クリック数', '費用', 'コンバージョン数'
+      '日付', 'キャンペーン名', '広告チャネルタイプ', '広告グループ名', '性別',
+      'コンバージョンアクション名', 'コンバージョン数'
     ];
 
     if (sheet.getLastRow() === 0) {
@@ -59,21 +60,21 @@
 
     console.log(`取得期間: ${startDateString} から ${endDateString}`);
 
-    // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
+    // クエリに「campaign.advertising_channel_type」を追加
     const query = `
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         ad_group.name,
         ad_group_criterion.gender.type,
-        metrics.impressions,
-        metrics.clicks,
-        metrics.cost_micros,
+        segments.conversion_action_name,
         metrics.conversions
       FROM gender_view
       WHERE
         segments.date >= '${startDateString}'
         AND segments.date <= '${endDateString}'
+        AND metrics.conversions > 0
     `;
 
     const report = AdsApp.report(query);
@@ -83,20 +84,19 @@
     while (rows.hasNext()) {
       const row = rows.next();
 
-      // ★★★【変更点】性別の項目名を「ad_group_criterion.gender.type」に修正 ★★★
       let gender = row['ad_group_criterion.gender.type'];
       if (gender === 'MALE') gender = '男性';
       if (gender === 'FEMALE') gender = '女性';
       if (gender === 'UNDETERMINED') gender = '不明';
 
+      // 書き込むデータに「campaign.advertising_channel_type」を追加
       dataToWrite.push([
         row['segments.date'],
         row['campaign.name'],
+        row['campaign.advertising_channel_type'], // 広告チャネルタイプを追加
         row['ad_group.name'],
         gender,
-        row['metrics.impressions'],
-        row['metrics.clicks'],
-        row['metrics.cost_micros'] / 1000000,
+        row['segments.conversion_action_name'],
         row['metrics.conversions']
       ]);
     }

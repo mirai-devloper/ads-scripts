@@ -1,6 +1,7 @@
 /**
  * 【年指定・追記・自動ソート版】
  * 指定した1年分のコンバージョン内訳データを広告グループ単位で取得します。
+ * ★データの取得は最大で「前々日」までとします。
  */
  function main() {
 
@@ -31,11 +32,28 @@
 
   // --- 取得期間を決定するロジック ---
   const accountTimezone = AdsApp.currentAccount().getTimeZone();
-  const startDate = new Date(TARGET_YEAR, 0, 1); // 1月1日
-  const endDate = new Date(TARGET_YEAR, 11, 31); // 12月31日
+  const startDate = new Date(TARGET_YEAR, 0, 1); // 指定年の1月1日
+
+  // スクリプト実行日の前々日を計算
+  const today = new Date();
+  const dayBeforeYesterday = new Date(today);
+  dayBeforeYesterday.setDate(today.getDate() - 2);
+
+  // 取得終了日を、指定年の12月31日と前々日のうち、どちらか早い方に設定
+  let endDate = new Date(TARGET_YEAR, 11, 31); // 指定年の12月31日
+  if (endDate > dayBeforeYesterday) {
+    endDate = dayBeforeYesterday;
+  }
+
+  // もしstartDateがendDateより後の日付になってしまう場合は、処理をスキップ
+  if (startDate > endDate) {
+    console.log(`指定年(${TARGET_YEAR})のデータは、まだ前々日までの範囲に達していません。`);
+    return;
+  }
+
   const startDateString = Utilities.formatDate(startDate, accountTimezone, "yyyyMMdd");
   const endDateString = Utilities.formatDate(endDate, accountTimezone, "yyyyMMdd");
-  console.log(`取得期間: ${TARGET_YEAR}年1月1日 から ${TARGET_YEAR}年12月31日`);
+  console.log(`取得期間: ${startDateString} から ${endDateString}`);
 
   // ★★★【変更点】ご要望の項目リストに合わせてクエリを修正 ★★★
   const query = `
