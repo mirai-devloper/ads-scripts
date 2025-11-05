@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>広告パフォーマンス インフォグラフィック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', 'Inter', sans-serif; }
+        .metric-value { font-weight: 700; color: #1e3a8a; }
+        .metric-label { font-size: 0.875rem; color: #4b5563; }
+        .card { transition: all 0.3s ease-in-out; position: relative; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+        /* ★追加: カスタム日付範囲の表示/非表示を滑らかにする */
+        #custom-date-container { transition: all 0.3s ease-in-out; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">広告パフォーマンス インフォグラフィック</h1>
+            <p id="report-period-display" class="text-slate-600 mt-2">データを読み込んでいます...</p>
+        </header>
+
+        <div class="flex flex-wrap justify-center items-center gap-4 mb-12">
+            <select id="period-selector" class="block w-48 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="last_30_days">過去30日間</option>
+                <option value="last_month" selected>先月</option>
+                <option value="this_month">今月</option>
+                <option value="last_7_days">過去7日間</option>
+                <option value="this_year">今年</option>
+                <option value="last_year">昨年</option>
+                <option value="all_time">全期間</option>
+                <option value="custom">カスタム</option>
+            </select>
+
+            <div id="custom-date-container" class="hidden items-center gap-2">
+                <input type="date" id="start-date" class="block w-40 px-3 py-2 text-base text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm">
+                <span class="text-gray-500">-</span>
+                <input type="date" id="end-date" class="block w-40 px-3 py-2 text-base text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm">
+            </div>
+
+            <select id="campaign-selector" class="block w-56 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            </select>
+        </div>
+        <div id="infographic-container" class="relative flex flex-col items-center space-y-16">
+        </div>
+    </div>
+
+    <script>
+      const allData = <?!= allDataJson ?>;
+      const availableCampaigns = <?!= availableCampaignsJson ?>;
+
+      const periodSelector = document.getElementById('period-selector');
+      const customDateContainer = document.getElementById('custom-date-container');
+      const startDateInput = document.getElementById('start-date');
+      const endDateInput = document.getElementById('end-date');
+      const campaignSelector = document.getElementById('campaign-selector');
+      const container = document.getElementById('infographic-container');
+      const periodDisplay = document.getElementById('report-period-display');
+
+      function initialize() {
+        if (!allData || allData.length === 0) {
+          periodDisplay.textContent = "表示できるデータがスプレッドシートにありません。";
+          campaignSelector.innerHTML = '<option>データなし</option>';
+          container.innerHTML = '';
+          return;
+        }
+
+        // キャンペーンセレクターの初期化
+        availableCampaigns.forEach(function(campaignName) {
+            const option = document.createElement('option');
+            option.value = campaignName;
+            option.textContent = campaignName;
+            campaignSelector.appendChild(option);
+        });
+
+        // イベントリスナーの設定
+        periodSelector.addEventListener('change', handlePeriodChange);
+        startDateInput.addEventListener('change', updateReport);
+        endDateInput.addEventListener('change', updateReport);
+        campaignSelector.addEventListener('change', updateReport);
+
+        // 初期レポート表示
+        setDefaultDates();
+        updateReport();
+      }
+
+      function handlePeriodChange() {
+        if (periodSelector.value === 'custom') {
+            customDateContainer.classList.remove('hidden');
+            customDateContainer.classList.add('flex');
+        } else {
+            customDateContainer.classList.add('hidden');
+            customDateContainer.classList.remove('flex');
+            setDefaultDates();
+            updateReport();
+        }
+      }
+
+      function setDefaultDates() {
+          const { startDate, endDate } = getDateRange(periodSelector.value);
+          startDateInput.value = formatDate(startDate);
+          endDateInput.value = formatDate(endDate);
+      }
+
+      function getDateRange(period) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // 時刻をリセット
+        let startDate, endDate;
+
+        switch (period) {
+          case 'this_month':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            endDate = today;
+            break;
+          case 'last_month':
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            break;
+          case 'last_7_days':
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 6);
+            endDate = today;
+            break;
+          case 'last_30_days':
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 29);
+            endDate = today;
+            break;
+          case 'this_year':
+            startDate = new Date(today.getFullYear(), 0, 1);
+            endDate = today;
+            break;
+          case 'last_year':
+            startDate = new Date(today.getFullYear() - 1, 0, 1);
+            endDate = new Date(today.getFullYear() - 1, 11, 31);
+            break;
+          case 'all_time':
+            startDate = new Date('2000-01-01'); // 実際のデータに合わせて調整
+            endDate = new Date('2099-12-31');
+            break;
+          case 'custom':
+            startDate = startDateInput.value ? new Date(startDateInput.value) : null;
+            endDate = endDateInput.value ? new Date(endDateInput.value) : null;
+            break;
+          default:
+            // デフォルトは先月
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        }
+        return { startDate, endDate };
+      }
+
+      const formatDate = (date) => date ? date.toISOString().split('T')[0] : '';
+
+      function updateReport() {
+        const { startDate, endDate } = getDateRange(periodSelector.value);
+        const selectedCampaign = campaignSelector.value;
+
+        if (!startDate || !endDate) {
+            container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">有効な期間を選択してください。</p></div>`;
+            return;
+        }
+
+        const reportPeriodText = `${formatDate(startDate)} ～ ${formatDate(endDate)}`;
+
+        let filteredData = allData.filter(function(row) {
+          const rowDate = new Date(row.date);
+          return rowDate >= startDate && rowDate <= endDate;
+        });
+
+        if (selectedCampaign !== "すべてのキャンペーン") {
+            filteredData = filteredData.filter(function(row) {
+                return row.campaignName === selectedCampaign;
+            });
+        }
+
+        const aggregatedData = filteredData.reduce(function(acc, row) {
+          if (!acc[row.groupName]) {
+            acc[row.groupName] = { name: row.groupName, cost: 0, impressions: 0, clicks: 0, conversions: 0 };
+          }
+          acc[row.groupName].cost += row.cost;
+          acc[row.groupName].impressions += row.impressions;
+          acc[row.groupName].clicks += row.clicks;
+          acc[row.groupName].conversions += row.conversions;
+          return acc;
+        }, {});
+
+        const processedData = Object.keys(aggregatedData).map(function(key) {
+            const group = aggregatedData[key];
+            const clicks = group.clicks;
+            const conversions = group.conversions;
+            const cost = group.cost;
+            const cvr = clicks > 0 ? (conversions / clicks) * 100 : 0;
+            return {
+              name: group.name, _cvr: cvr, cvr: cvr.toFixed(2),
+              cpa: '¥' + (conversions > 0 ? Math.round(cost / conversions) : 0).toLocaleString(),
+              avgCpc: '¥' + (clicks > 0 ? Math.round(cost / clicks) : 0).toLocaleString(),
+              cost: '¥' + Math.round(cost).toLocaleString(), clicks: clicks.toLocaleString(),
+              conversions: conversions.toLocaleString(), impressions: group.impressions.toLocaleString(),
+            };
+        });
+
+        processedData.sort(function(a, b) { return b._cvr - a._cvr; });
+
+        let levels = [];
+        const n = processedData.length;
+        if (n > 0) {
+          if (n >= 5) { levels = [processedData.slice(3), processedData.slice(1, 3), processedData.slice(0, 1)]; } else { levels = [processedData]; }
+        }
+
+        renderHTML(levels, reportPeriodText);
+      }
+
+      function renderHTML(levels, reportPeriod) {
+        periodDisplay.textContent = `分析期間: ${reportPeriod}`;
+
+        if (!levels || levels.length === 0) {
+          container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">この期間に表示できるデータがありません。</p></div>`;
+          return;
+        }
+
+        let html = '';
+        levels.forEach(function(level, index) {
+          html += '<div class="w-full flex flex-wrap justify-center gap-8">';
+          level.forEach(function(group) {
+            const isTopPerformer = (levels.length === 3 && index === 2);
+            html +=
+              `<div class="card bg-white p-6 rounded-xl w-full max-w-sm ${isTopPerformer ? 'shadow-xl border-2 border-blue-600' : 'shadow-lg border border-slate-200'}">
+                <h3 class="font-bold text-xl mb-4 text-center ${isTopPerformer ? 'text-blue-800' : 'text-slate-700'}">${group.name}</h3>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div><p class="metric-label">コンバージョン数</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${group.conversions}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">件</span></p></div>
+                  <div><p class="metric-label">コンバージョン率</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${group.cvr}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">%</span></p></div>
+                  <div class="col-span-2 border-t pt-4"><p class="metric-label">コンバージョン単価: <span class="metric-value ${isTopPerformer ? 'text-lg' : ''}">${group.cpa}</span></p></div>
+                  <div><p class="metric-label">費用</p><p class="metric-value">${group.cost}</p></div>
+                  <div><p class="metric-label">クリック数</p><p class="metric-value">${group.clicks}</p></div>
+                  <div><p class="metric-label">表示回数</p><p class="metric-value">${group.impressions}</p></div>
+                  <div><p class="metric-label">平均クリック単価</p><p class="metric-value">${group.avgCpc}</p></div>
+                </div>
+              </div>`;
+          });
+          html += '</div>';
+        });
+        container.innerHTML = html;
+      }
+
+      initialize();
+    </script>
+    </body>
+</html>

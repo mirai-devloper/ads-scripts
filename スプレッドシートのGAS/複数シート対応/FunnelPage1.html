@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>広告パフォーマンス インフォグラフィック</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', 'Inter', sans-serif; }
+        .metric-value { font-weight: 700; color: #1e3a8a; }
+        .metric-label { font-size: 0.875rem; color: #4b5563; }
+        .card { transition: all 0.3s ease-in-out; position: relative; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">広告パフォーマンス インフォグラフィック</h1>
+            <p id="report-month-display" class="text-slate-600 mt-2">データを読み込んでいます...</p>
+        </header>
+
+        <div class="flex justify-center items-center gap-4 mb-12">
+            <select id="month-selector" class="block w-48 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            </select>
+            <select id="campaign-selector" class="block w-56 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            </select>
+        </div>
+
+        <div id="infographic-container" class="relative flex flex-col items-center space-y-16">
+        </div>
+    </div>
+
+    <script>
+      // --- GASから渡されるデータ ---
+      const allData = <?!= allDataJson ?>;
+      const availableMonths = <?!= availableMonthsJson ?>;
+      const availableCampaigns = <?!= availableCampaignsJson ?>;
+      const defaultPeriod = <?= defaultPeriod ? '\"' + defaultPeriod + '\"' : 'null' ?>;
+
+      // --- HTML要素の取得 ---
+      const monthSelector = document.getElementById('month-selector');
+      const campaignSelector = document.getElementById('campaign-selector');
+      const container = document.getElementById('infographic-container');
+      const monthDisplay = document.getElementById('report-month-display');
+
+      /**
+       * ページの初期化処理
+       */
+      function initialize() {
+        if (!availableMonths || availableMonths.length === 0) {
+          monthDisplay.textContent = "表示できるデータがスプレッドシートにありません。";
+          monthSelector.innerHTML = '<option>データなし</option>';
+          campaignSelector.innerHTML = '<option>データなし</option>';
+          container.innerHTML = '';
+          return;
+        }
+
+        // 月プルダウンを生成
+        availableMonths.forEach(function(month) {
+          const option = document.createElement('option');
+          option.value = month.period;
+          option.textContent = month.display;
+          monthSelector.appendChild(option);
+        });
+
+        // キャンペーンプルダウンを生成
+        availableCampaigns.forEach(function(campaignName) {
+            const option = document.createElement('option');
+            option.value = campaignName;
+            option.textContent = campaignName;
+            campaignSelector.appendChild(option);
+        });
+
+        // 両方のプルダウンに変更があったらレポートを更新
+        monthSelector.addEventListener('change', updateReport);
+        campaignSelector.addEventListener('change', updateReport);
+
+        // 最初のレポートを表示
+        updateReport();
+      }
+
+      /**
+       * フィルター条件に基づいてレポートを更新
+       */
+      function updateReport() {
+        const selectedPeriod = monthSelector.value;
+        const selectedCampaign = campaignSelector.value;
+
+        // 1. 月で絞り込み
+        let filteredData = allData.filter(function(row) {
+          return row.period === selectedPeriod;
+        });
+
+        // 2. キャンペーンで絞り込み (「すべて」以外が選択されている場合)
+        if (selectedCampaign !== "すべてのキャンペーン") {
+            filteredData = filteredData.filter(function(row) {
+                return row.campaignName === selectedCampaign;
+            });
+        }
+
+        // 3. 広告グループごとにデータを集計
+        const aggregatedData = filteredData.reduce(function(acc, row) {
+          if (!acc[row.groupName]) {
+            acc[row.groupName] = { name: row.groupName, cost: 0, impressions: 0, clicks: 0, conversions: 0 };
+          }
+          acc[row.groupName].cost += row.cost;
+          acc[row.groupName].impressions += row.impressions;
+          acc[row.groupName].clicks += row.clicks;
+          acc[row.groupName].conversions += row.conversions;
+          return acc;
+        }, {});
+
+        // 4. 派生指標の計算とフォーマット
+        const processedData = Object.keys(aggregatedData).map(function(key) {
+            const group = aggregatedData[key];
+            const clicks = group.clicks;
+            const conversions = group.conversions;
+            const cost = group.cost;
+            const cvr = clicks > 0 ? (conversions / clicks) * 100 : 0;
+            return {
+              name: group.name, _cvr: cvr, cvr: cvr.toFixed(2),
+              cpa: '¥' + (conversions > 0 ? Math.round(cost / conversions) : 0).toLocaleString(),
+              avgCpc: '¥' + (clicks > 0 ? Math.round(cost / clicks) : 0).toLocaleString(),
+              cost: '¥' + Math.round(cost).toLocaleString(), clicks: clicks.toLocaleString(),
+              conversions: conversions.toLocaleString(), impressions: group.impressions.toLocaleString(),
+            };
+        });
+
+        // 5. ファネル構造に分類
+        processedData.sort(function(a, b) { return b._cvr - a._cvr; });
+
+        let levels = [];
+        const n = processedData.length;
+        if (n > 0) {
+          if (n >= 5) { levels = [processedData.slice(3), processedData.slice(1, 3), processedData.slice(0, 1)]; } else { levels = [processedData]; }
+        }
+
+        const currentMonthDisplay = monthSelector.options[monthSelector.selectedIndex].text;
+        renderHTML(levels, currentMonthDisplay);
+      }
+
+      /**
+       * データに基づいてHTMLを生成し、画面に描画
+       */
+      function renderHTML(levels, reportMonth) {
+        monthDisplay.textContent = `${reportMonth}の各広告グループの成果を視覚的に分析します。`;
+
+        if (!levels || levels.length === 0) {
+          container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">${reportMonth}に表示できるデータがありません。</p></div>`;
+          return;
+        }
+
+        let html = '';
+        levels.forEach(function(level, index) {
+          html += '<div class="w-full flex flex-wrap justify-center gap-8">';
+          level.forEach(function(group) {
+            const isTopPerformer = (levels.length === 3 && index === 2);
+            html +=
+              `<div class="card bg-white p-6 rounded-xl w-full max-w-sm ${isTopPerformer ? 'shadow-xl border-2 border-blue-600' : 'shadow-lg border border-slate-200'}">
+                <h3 class="font-bold text-xl mb-4 text-center ${isTopPerformer ? 'text-blue-800' : 'text-slate-700'}">${group.name}</h3>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div><p class="metric-label">コンバージョン数</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${group.conversions}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">件</span></p></div>
+                  <div><p class="metric-label">コンバージョン率</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${group.cvr}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">%</span></p></div>
+                  <div class="col-span-2 border-t pt-4"><p class="metric-label">コンバージョン単価: <span class="metric-value ${isTopPerformer ? 'text-lg' : ''}">${group.cpa}</span></p></div>
+                  <div><p class="metric-label">費用</p><p class="metric-value">${group.cost}</p></div>
+                  <div><p class="metric-label">クリック数</p><p class="metric-value">${group.clicks}</p></div>
+                  <div><p class="metric-label">表示回数</p><p class="metric-value">${group.impressions}</p></div>
+                  <div><p class="metric-label">平均クリック単価</p><p class="metric-value">${group.avgCpc}</p></div>
+                </div>
+              </div>`;
+          });
+          html += '</div>';
+        });
+        container.innerHTML = html;
+      }
+
+      // ページの読み込み完了時に初期化処理を実行
+      initialize();
+    </script>
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>広告パフォーマンス ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', 'Inter', sans-serif; }
+        .metric-value { font-weight: 700; color: #1e3a8a; }
+        .metric-label { font-size: 0.875rem; color: #4b5563; }
+        .card { transition: all 0.3s ease-in-out; position: relative; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+        .tab { cursor: pointer; padding: 0.75rem 1.5rem; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab.active { border-bottom-color: #2563eb; color: #1e3a8a; font-weight: 600; }
+        .tab:hover { background-color: #f1f5f9; }
+        /* テーブル用のスタイル */
+        .data-table { width: 100%; max-width: 1024px; margin: 2rem auto; border-collapse: collapse; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .data-table th, .data-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        .data-table th { background-color: #f3f4f6; font-weight: 600; }
+        .data-table td:not(:first-child) { text-align: right; }
+        .data-table tr:hover { background-color: #f9fafb; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">広告パフォーマンス ダッシュボード</h1>
+            <p id="report-period-display" class="text-slate-600 mt-2">データを読み込んでいます...</p>
+        </header>
+
+        <div class="flex flex-wrap justify-center items-center gap-4 mb-8">
+            <select id="period-selector" class="block w-48 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="last_30_days">過去30日間</option>
+                <option value="last_month" selected>先月</option>
+                <option value="this_month">今月</option>
+                <option value="last_7_days">過去7日間</option>
+                <option value="all_time">全期間</option>
+                <option value="custom">カスタム</option>
+            </select>
+            <div id="custom-date-container" class="hidden items-center gap-2">
+                <input type="date" id="start-date" class="block w-40 px-3 py-2 text-base text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm">
+                <span class="text-gray-500">-</span>
+                <input type="date" id="end-date" class="block w-40 px-3 py-2 text-base text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm">
+            </div>
+            <select id="campaign-selector" class="block w-56 px-4 py-2 text-base font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select>
+        </div>
+
+        <div class="border-b border-gray-200 mb-8">
+            <nav id="view-tabs" class="flex justify-center -mb-px" aria-label="Tabs">
+                <div class="tab active" data-view="group">グループ別</div>
+                <div class="tab" data-view="performance">パフォーマンス</div>
+                <div class="tab" data-view="gender">性別</div>
+            </nav>
+        </div>
+
+        <div id="infographic-container"></div>
+    </div>
+
+    <script>
+    // --- データと状態管理 ---
+    const allDataSets = <?php echo $allDataSetsJson; ?>;
+    const availableCampaigns = <?php echo $availableCampaignsJson; ?>;
+    let currentView = 'group'; // 初期表示
+    let minDateInData = null, maxDateInData = null;
+
+    // --- UI要素 ---
+    const periodSelector = document.getElementById('period-selector');
+    const customDateContainer = document.getElementById('custom-date-container');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    const campaignSelector = document.getElementById('campaign-selector');
+    const container = document.getElementById('infographic-container');
+    const periodDisplay = document.getElementById('report-period-display');
+    const viewTabs = document.getElementById('view-tabs');
+
+    // --- 初期化 ---
+    function initialize() {
+        if (!allDataSets || Object.keys(allDataSets).length === 0) {
+            periodDisplay.textContent = "表示できるデータがスプレッドシートにありません。";
+            return;
+        }
+
+        const allEntries = [].concat(...Object.values(allDataSets));
+        if (allEntries.length > 0) {
+            const dateBounds = allEntries.reduce((acc, row) => {
+                const rowDate = new Date(row.date);
+                if (!acc.min || rowDate < acc.min) acc.min = rowDate;
+                if (!acc.max || rowDate > acc.max) acc.max = rowDate;
+                return acc;
+            }, { min: null, max: null });
+            minDateInData = dateBounds.min;
+            maxDateInData = dateBounds.max;
+        }
+
+        campaignSelector.innerHTML = availableCampaigns.map(name => `<option value="${name}">${name}</option>`).join('');
+
+        // --- イベントリスナー ---
+        [periodSelector, startDateInput, endDateInput, campaignSelector].forEach(el => el.addEventListener('change', updateReport));
+        periodSelector.addEventListener('change', handlePeriodChange);
+        viewTabs.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => switchView(tab.dataset.view)));
+
+        setDefaultDates();
+        updateReport();
+    }
+
+    // --- 表示切り替え ---
+    function switchView(newView) {
+        currentView = newView;
+        viewTabs.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.view === newView);
+        });
+        updateReport();
+    }
+
+    // --- データ処理と表示 ---
+    function updateReport() {
+        const { startDate, endDate } = getDateRange(periodSelector.value);
+        if (!startDate || !endDate) {
+            container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">有効な期間を選択してください。</p></div>`;
+            return;
+        }
+
+        periodDisplay.textContent = `分析期間: ${formatDate(startDate)} ～ ${formatDate(endDate)}`;
+        const selectedCampaign = campaignSelector.value;
+        const currentData = allDataSets[currentView] || [];
+
+        let filteredData = currentData.filter(row => {
+            const rowDate = new Date(row.date);
+            const campaignMatch = (selectedCampaign === 'すべてのキャンペーン' || row.campaignName === selectedCampaign);
+            return rowDate >= startDate && rowDate <= endDate && campaignMatch;
+        });
+
+        // --- 表示内容の振り分け ---
+        switch (currentView) {
+            case 'group':
+                processAndRenderGroupView(filteredData);
+                break;
+            case 'performance':
+                processAndRenderTableView(filteredData, 'campaignName', 'キャンペーン');
+                break;
+            case 'gender':
+                processAndRenderTableView(filteredData, 'gender', '性別');
+                break;
+        }
+    }
+
+    // --- ヘルパー関数 (日付、フォーマット) ---
+    const formatDate = (date) => date ? date.toISOString().split('T')[0] : '';
+    const formatNum = (num) => Math.round(num).toLocaleString();
+    const formatYen = (num) => `¥${formatNum(num)}`;
+
+    function handlePeriodChange() {
+        if (periodSelector.value === 'custom') {
+            customDateContainer.classList.remove('hidden');
+            customDateContainer.classList.add('flex');
+            const today = new Date();
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(today.getMonth() - 3);
+            endDateInput.value = formatDate(today);
+            startDateInput.value = formatDate(threeMonthsAgo);
+        } else {
+            customDateContainer.classList.add('hidden');
+            customDateContainer.classList.remove('flex');
+            setDefaultDates();
+        }
+    }
+
+    function setDefaultDates() {
+        const { startDate, endDate } = getDateRange(periodSelector.value);
+        startDateInput.value = formatDate(startDate);
+        endDateInput.value = formatDate(endDate);
+    }
+
+    function getDateRange(period) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let startDate, endDate;
+        switch (period) {
+            case 'this_month':
+                startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                endDate = today;
+                break;
+            case 'last_month':
+                startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+                break;
+            case 'last_7_days':
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 6);
+                endDate = today;
+                break;
+            case 'last_30_days':
+                startDate = new Date(today);
+                startDate.setDate(today.getDate() - 29);
+                endDate = today;
+                break;
+            case 'all_time':
+                startDate = minDateInData;
+                endDate = maxDateInData;
+                break;
+            case 'custom':
+                startDate = startDateInput.value ? new Date(startDateInput.value) : null;
+                endDate = endDateInput.value ? new Date(endDateInput.value) : null;
+                break;
+            default:
+                startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        }
+        return { startDate, endDate };
+    }
+
+    // --- 各ビューの処理と描画 ---
+
+    // 1. グループビュー
+    function processAndRenderGroupView(data) {
+        const aggregatedData = data.reduce((acc, row) => {
+            const key = row.campaignName + '||' + row.groupName;
+            if (!acc[key]) acc[key] = { name: row.groupName, campaignName: row.campaignName, cost: 0, impressions: 0, clicks: 0, conversions: 0 };
+            acc[key].cost += row.cost; acc[key].impressions += row.impressions; acc[key].clicks += row.clicks; acc[key].conversions += row.conversions;
+            return acc;
+        }, {});
+
+        const processedData = Object.values(aggregatedData).map(group => {
+            const cvr = group.clicks > 0 ? (group.conversions / group.clicks) * 100 : 0;
+            const cpa = group.conversions > 0 ? group.cost / group.conversions : 0;
+            const avgCpc = group.clicks > 0 ? group.cost / group.clicks : 0;
+            return { ...group, _cvr: cvr, cvr: cvr.toFixed(2), cpa, avgCpc };
+        }).sort((a, b) => b._cvr - a._cvr);
+
+        const n = processedData.length;
+        const levels = (n > 0) ? ((n >= 5) ? [processedData.slice(3), processedData.slice(1, 3), processedData.slice(0, 1)] : [processedData]) : [];
+
+        if (levels.length === 0) {
+            container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">この期間に表示できるデータがありません。</p></div>`;
+            return;
+        }
+
+        let html = '<div class="relative flex flex-col items-center space-y-16">';
+        levels.forEach((level, index) => {
+            html += '<div class="w-full flex flex-wrap justify-center gap-8">';
+            level.forEach(group => {
+                const isTopPerformer = levels.length === 3 && index === 2;
+                html += `
+                <div class="card bg-white p-6 rounded-xl w-full max-w-sm ${isTopPerformer ? 'shadow-xl border-2 border-blue-600' : 'shadow-lg border border-slate-200'}">
+                    <h3 class="font-bold text-xl mb-1 text-center ${isTopPerformer ? 'text-blue-800' : 'text-slate-700'}">${group.name}</h3>
+                    <p class="text-sm text-slate-500 mb-4 text-center">${group.campaignName}</p>
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                        <div><p class="metric-label">コンバージョン数</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${formatNum(group.conversions)}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">件</span></p></div>
+                        <div><p class="metric-label">コンバージョン率</p><p class="metric-value ${isTopPerformer ? 'text-3xl text-blue-600' : 'text-2xl'}">${group.cvr}<span class="${isTopPerformer ? 'text-lg' : 'text-sm'} font-medium">%</span></p></div>
+                        <div class="col-span-2 border-t pt-4"><p class="metric-label">コンバージョン単価: <span class="metric-value ${isTopPerformer ? 'text-lg' : ''}">${formatYen(group.cpa)}</span></p></div>
+                        <div><p class="metric-label">費用</p><p class="metric-value">${formatYen(group.cost)}</p></div>
+                        <div><p class="metric-label">クリック数</p><p class="metric-value">${formatNum(group.clicks)}</p></div>
+                        <div><p class="metric-label">表示回数</p><p class="metric-value">${formatNum(group.impressions)}</p></div>
+                        <div><p class="metric-label">平均クリック単価</p><p class="metric-value">${formatYen(group.avgCpc)}</p></div>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+        });
+        container.innerHTML = html + '</div>';
+    }
+
+    // 2. テーブルビュー (パフォーマンス、性別で共用)
+    function processAndRenderTableView(data, groupByKey, headerLabel) {
+        if (data.length === 0) {
+            container.innerHTML = `<div class="text-center py-12"><p class="text-slate-500">この期間に表示できるデータがありません。</p></div>`;
+            return;
+        }
+
+        const aggregatedData = data.reduce((acc, row) => {
+            const key = row[groupByKey] || 'N/A';
+            if (!acc[key]) acc[key] = { key, cost: 0, impressions: 0, clicks: 0, conversions: 0 };
+            acc[key].cost += row.cost; acc[key].impressions += row.impressions; acc[key].clicks += row.clicks; acc[key].conversions += row.conversions;
+            return acc;
+        }, {});
+
+        const processedData = Object.values(aggregatedData).map(item => {
+            const cvr = item.clicks > 0 ? (item.conversions / item.clicks) * 100 : 0;
+            const cpa = item.conversions > 0 ? item.cost / item.conversions : 0;
+            return { ...item, cvr: cvr.toFixed(2), cpa };
+        }).sort((a, b) => b.cost - a.cost);
+
+        let tableHtml = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>${headerLabel}</th>
+                        <th>費用</th>
+                        <th>クリック数</th>
+                        <th>コンバージョン数</th>
+                        <th>CVR (%)</th>
+                        <th>CPA</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        processedData.forEach(item => {
+            tableHtml += `
+                    <tr>
+                        <td>${item.key}</td>
+                        <td>${formatYen(item.cost)}</td>
+                        <td>${formatNum(item.clicks)}</td>
+                        <td>${formatNum(item.conversions)}</td>
+                        <td>${item.cvr}</td>
+                        <td>${formatYen(item.cpa)}</td>
+                    </tr>`;
+        });
+
+        tableHtml += '</tbody></table>';
+        container.innerHTML = tableHtml;
+    }
+
+    // --- 初期化実行 ---
+    initialize();
+    </script>
+</body>
+</html>
